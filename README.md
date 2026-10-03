@@ -1,4 +1,4 @@
-# PL $ 1 Target for MotiveWave
+# Dollar Risk Box for MotiveWave
 
 **English** | [Русский](README.ru.md)
 
@@ -28,9 +28,9 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 
 ## Install
 
-1. Download `PLDollarTarget.jar` from the [latest release](../../releases/latest).
+1. Download `DollarRiskBox.jar` from the [latest release](../../releases/latest).
 2. Put it into the **`MotiveWave Extensions`** folder in your user home folder (MotiveWave scans it automatically; on macOS: `~/MotiveWave Extensions` — create the folder if it does not exist).
-3. Restart MotiveWave. The indicator appears under **Study → General → PL $ 1 Target**.
+3. Restart MotiveWave. The indicator appears under **Study → General → Dollar Risk Box**.
 
 Add it to a chart once — the **Long / Short** panel appears. Save the chart as a *Template* if you want the panel on every chart.
 
@@ -74,12 +74,12 @@ The boxes and the panel live inside one indicator. MotiveWave's trash icon (and 
 Requirements: a JDK (17 or newer) and `mwave_sdk.jar` from your own MotiveWave installation (it is not included in this repository).
 
 ```bash
-bash build.sh            # builds build/PLDollarTarget.jar
+bash build.sh            # builds build/DollarRiskBox.jar
 bash build.sh install    # also copies it into ~/MotiveWave Extensions
 ```
 
 Different locations: `MW_SDK=/path/to/mwave_sdk.jar MW_EXT=/path/to/extensions bash build.sh install`.
-On Windows, compile by hand: `javac --release 21 -cp mwave_sdk.jar -d out pl_dollar/PLDollarTarget.java`, copy `pl_dollar/nls/strings.properties` to `out/pl_dollar/nls/`, then `jar cf PLDollarTarget.jar -C out .`.
+On Windows, compile by hand: `javac --release 21 -cp mwave_sdk.jar -d out dollar_risk_box/DollarRiskBox.java`, copy `dollar_risk_box/nls/strings.properties` to `out/dollar_risk_box/nls/`, then `jar cf DollarRiskBox.jar -C out .`.
 
 You can check the "no orders" claim yourself: `javap -v` on the compiled classes shows no reference to `order_mgmt` or `OrderContext`.
 

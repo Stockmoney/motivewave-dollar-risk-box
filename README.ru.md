@@ -1,4 +1,4 @@
-# PL $ 1 Target для MotiveWave
+# Dollar Risk Box для MotiveWave
 
 [English](README.md) | **Русский**
 
@@ -28,9 +28,9 @@
 
 ## Установка
 
-1. Скачайте `PLDollarTarget.jar` из [последнего релиза](../../releases/latest).
+1. Скачайте `DollarRiskBox.jar` из [последнего релиза](../../releases/latest).
 2. Положите файл в папку **`MotiveWave Extensions`** в вашей домашней папке (MotiveWave сканирует её автоматически; на macOS это `~/MotiveWave Extensions` — создайте папку, если её нет).
-3. Перезапустите MotiveWave. Индикатор появится в **Study → General → PL $ 1 Target**.
+3. Перезапустите MotiveWave. Индикатор появится в **Study → General → Dollar Risk Box**.
 
 Добавьте его на график один раз — появится панель **Long / Short**. Сохраните график как *Template*, если хотите, чтобы панель была на каждом графике.
 
@@ -74,12 +74,12 @@ MNQ, стоимость пункта $2. Стоп в 46 пунктах → ри�
 Нужны: JDK (17 или новее) и `mwave_sdk.jar` из вашей установки MotiveWave (в репозитории его нет).
 
 ```bash
-bash build.sh            # собирает build/PLDollarTarget.jar
+bash build.sh            # собирает build/DollarRiskBox.jar
 bash build.sh install    # и копирует в ~/MotiveWave Extensions
 ```
 
 Другие пути: `MW_SDK=/путь/к/mwave_sdk.jar MW_EXT=/путь/к/extensions bash build.sh install`.
-На Windows соберите вручную: `javac --release 21 -cp mwave_sdk.jar -d out pl_dollar/PLDollarTarget.java`, скопируйте `pl_dollar/nls/strings.properties` в `out/pl_dollar/nls/`, затем `jar cf PLDollarTarget.jar -C out .`.
+На Windows соберите вручную: `javac --release 21 -cp mwave_sdk.jar -d out dollar_risk_box/DollarRiskBox.java`, скопируйте `dollar_risk_box/nls/strings.properties` в `out/dollar_risk_box/nls/`, затем `jar cf DollarRiskBox.jar -C out .`.
 
 Утверждение «ордеров нет» можно проверить самим: `javap -v` на скомпилированных классах не показывает ссылок на `order_mgmt` и `OrderContext`.
 

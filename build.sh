@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds build/PLDollarTarget.jar from the sources.
+# Builds build/DollarRiskBox.jar from the sources.
 #
 #   bash build.sh            build only
 #   bash build.sh install    build, then copy into your "MotiveWave Extensions" folder
@@ -33,18 +33,18 @@ done
 [[ -n "$JAVAC" ]] || { echo "No working JDK found. Install one (e.g. 'brew install openjdk') or set JAVA_HOME." >&2; exit 1; }
 [[ -f "$SDK" ]] || { echo "MotiveWave SDK jar not found: $SDK (set MW_SDK)" >&2; exit 1; }
 
-rm -rf build && mkdir -p build/classes/pl_dollar/nls
-"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$SDK" -d build/classes pl_dollar/PLDollarTarget.java
-cp pl_dollar/nls/strings.properties build/classes/pl_dollar/nls/
-"$JAR" cf build/PLDollarTarget.jar -C build/classes .
-echo "built build/PLDollarTarget.jar"
+rm -rf build && mkdir -p build/classes/dollar_risk_box/nls
+"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$SDK" -d build/classes dollar_risk_box/DollarRiskBox.java
+cp dollar_risk_box/nls/strings.properties build/classes/dollar_risk_box/nls/
+"$JAR" cf build/DollarRiskBox.jar -C build/classes .
+echo "built build/DollarRiskBox.jar"
 
 if [[ "${1:-}" == "install" ]]; then
   mkdir -p "$EXT"
   # A new file name each time: a running MotiveWave caches an open jar by path, so a replaced
   # jar with the same name would load its classes but not its text resources until a restart.
-  rm -f "$EXT"/PLDollarTarget*.jar
-  cp build/PLDollarTarget.jar "$EXT/PLDollarTarget-$(date +%s).jar"
+  rm -f "$EXT"/DollarRiskBox*.jar "$EXT"/PLDollarTarget*.jar   # also drops the pre-rename jar
+  cp build/DollarRiskBox.jar "$EXT/DollarRiskBox-$(date +%s).jar"
   touch "$EXT/.last_updated"   # MotiveWave rescans the folder when this file changes
   echo "installed into: $EXT"
 fi
