@@ -18,6 +18,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 - **Stop / Entry / Target box** in the style of the built-in tool, with labels:
   `S:` stop price, loss in $ and % of balance · `E:` entry price, current P/L in $, R/R, contracts `Q`, balance · `T:` target price, profit in $ and %.
 - **Position size from risk.** Fixed $ risk *or* % of balance. Contracts = `floor(risk ÷ (stop distance × point value))`. Optional fixed quantity.
+- **Labels that stay out of the way.** The upper label sits above the upper line and the lower one below the lower line, so the text lies on the plain chart, not on the candles inside the box. Plates are semi-transparent (*Label Opacity*) with white text.
 - **Long / Short panel on the chart.** Press a button, click the chart — a box appears right there. Place as many boxes as you like.
 - **Move the whole box** by grabbing it anywhere (fill or labels), like in TradingView. Drag the handles to change stop, target or width.
 - **Draggable panel** — grab the `⠿` grip and put the panel wherever you like; the position is saved.
@@ -58,6 +59,8 @@ New boxes start one average-bar range from the entry (stop) and twice that (targ
 - **Risk Type** — *Fixed Amount* uses **Risk ($)**; *Percent of Balance* uses **Risk (%)** × **Account Balance**.
 - **Account Balance** is typed in by hand. A MotiveWave indicator cannot read your broker account, so update it when your balance changes.
 - **Fixed Quantity** — switch off the risk-based sizing and use a constant number of contracts.
+- **Format → Label Opacity** — transparency of the label plates (default 70 %; lower = more see-through, the white text stays readable at any value).
+- **Format → Balance** — also show your account balance on the entry label (off by default, to keep that label short).
 
 ![Format](docs/settings-format.jpg)
 
