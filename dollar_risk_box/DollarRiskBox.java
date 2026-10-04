@@ -77,6 +77,7 @@ public class DollarRiskBox extends Study {
     private static final String SHOW_CURRENT_PNL = "showCurrentPnl";
     private static final String SHOW_PERCENT = "showPercent";
     private static final String SHOW_BALANCE = "showBalance";
+    private static final String LABEL_OPACITY = "labelOpacity";
     private static final String SHOW_QTY = "showQty";
     private static final String EXTEND_RIGHT = "extendRight";
 
@@ -91,6 +92,7 @@ public class DollarRiskBox extends Study {
     private static final Color DEF_STOP_FILL = new Color(200, 40, 40, 60);
     private static final Color DEF_TARGET_COLOR = new Color(30, 144, 255);
     private static final Color DEF_STOP_COLOR = new Color(235, 50, 50);
+    private static final Color DEF_LABEL_BG = new Color(25, 25, 25);   // dark plate under white text
     private static final Color DEF_ENTRY_LINE = new Color(255, 255, 255, 120);
 
     private static final int LABEL_PAD_X = 4;
@@ -174,20 +176,21 @@ public class DollarRiskBox extends Study {
         f.addRow(new PathDescriptor(ENTRY_LINE, get("LBL_ENTRY_LINE"), DEF_ENTRY_LINE, 1.0f, null, true, true, true));
         f.addRow(new PathDescriptor(STOP_LINE, get("LBL_STOP_LINE"), DEF_STOP_COLOR, 1.0f, null, true, true, true));
         f.addRow(new FontDescriptor(FONT, get("LBL_FONT"), new Font("SansSerif", Font.PLAIN, 12)));
-        f.addRow(new ColorDescriptor(TARGET_FG, get("LBL_TARGET_TEXT"), DEF_TARGET_COLOR),
-                new ColorDescriptor(TARGET_BG, get("LBL_BG"), Color.WHITE));
+        f.addRow(new ColorDescriptor(TARGET_FG, get("LBL_TARGET_TEXT"), Color.WHITE),
+                new ColorDescriptor(TARGET_BG, get("LBL_BG"), DEF_LABEL_BG));
         f.addRow(new ColorDescriptor(ENTRY_FG, get("LBL_ENTRY_TEXT"), Color.WHITE),
                 new ColorDescriptor(ENTRY_BG, get("LBL_BG"), Color.BLACK));
-        f.addRow(new ColorDescriptor(STOP_FG, get("LBL_STOP_TEXT"), DEF_STOP_COLOR),
-                new ColorDescriptor(STOP_BG, get("LBL_BG"), Color.WHITE));
+        f.addRow(new ColorDescriptor(STOP_FG, get("LBL_STOP_TEXT"), Color.WHITE),
+                new ColorDescriptor(STOP_BG, get("LBL_BG"), DEF_LABEL_BG));
         var alignOptions = new ArrayList<NVP>();
         alignOptions.add(new NVP(get("LBL_ALIGN_LEFT"), ALIGN_LEFT));
         alignOptions.add(new NVP(get("LBL_ALIGN_MIDDLE"), ALIGN_MIDDLE));
         alignOptions.add(new NVP(get("LBL_ALIGN_RIGHT"), ALIGN_RIGHT));
         f.addRow(new DiscreteDescriptor(TEXT_ALIGN, get("LBL_TEXT_ALIGN"), ALIGN_MIDDLE, alignOptions));
+        f.addRow(new IntegerDescriptor(LABEL_OPACITY, get("LBL_LABEL_OPACITY"), 70, 0, 100, 5));
         var show = format.addGroup("");
         show.addRow(new BooleanDescriptor(SHOW_LABELS, get("LBL_SHOW_LABELS"), true),
-                new BooleanDescriptor(SHOW_BALANCE, get("LBL_SHOW_BALANCE"), true));
+                new BooleanDescriptor(SHOW_BALANCE, get("LBL_SHOW_BALANCE"), false));
         show.addRow(new BooleanDescriptor(SHOW_CURRENT_PNL, get("LBL_SHOW_CURRENT_PNL"), true),
                 new BooleanDescriptor(SHOW_PERCENT, get("LBL_SHOW_PERCENT"), true));
         show.addRow(new BooleanDescriptor(SHOW_QTY, get("LBL_SHOW_QTY"), true),
@@ -687,8 +690,8 @@ public class DollarRiskBox extends Study {
                 gc.fillOval(gripRect.x + 3, gripRect.y + 5 + i * 5, 3, 3);
                 gc.fillOval(gripRect.x + 8, gripRect.y + 5 + i * 5, 3, 3);
             }
-            button(gc, longRect, get("BTN_LONG"), s.getColor(TARGET_FG, DEF_TARGET_COLOR), Boolean.TRUE.equals(armed));
-            button(gc, shortRect, get("BTN_SHORT"), s.getColor(STOP_FG, DEF_STOP_COLOR), Boolean.FALSE.equals(armed));
+            button(gc, longRect, get("BTN_LONG"), DEF_TARGET_COLOR, Boolean.TRUE.equals(armed));
+            button(gc, shortRect, get("BTN_SHORT"), DEF_STOP_COLOR, Boolean.FALSE.equals(armed));
             if (armed != null) {
                 gc.setFont(hintFont);
                 gc.setColor(Color.WHITE);
@@ -827,7 +830,7 @@ public class DollarRiskBox extends Study {
 
             Calc c = calc(dc, b);
             boolean showPct = s.getBoolean(SHOW_PERCENT, true);
-            boolean showBal = s.getBoolean(SHOW_BALANCE, true) && c.balance() > 0;
+            boolean showBal = s.getBoolean(SHOW_BALANCE, false) && c.balance() > 0;
             boolean showQty = s.getBoolean(SHOW_QTY, true);
             boolean showPnl = s.getBoolean(SHOW_CURRENT_PNL, true);
 
@@ -848,11 +851,14 @@ public class DollarRiskBox extends Study {
 
             FontMetrics fm = metricsFor(font);
             String align = s.getString(TEXT_ALIGN, ALIGN_MIDDLE);
-            labels.add(makeLabel(fm, new String[]{st.toString()}, yStop, align,
-                    s.getColor(STOP_FG, DEF_STOP_COLOR), s.getColor(STOP_BG, Color.WHITE)));
-            labels.add(makeLabel(fm, new String[]{tt.toString()}, yTarget, align,
-                    s.getColor(TARGET_FG, DEF_TARGET_COLOR), s.getColor(TARGET_BG, Color.WHITE)));
-            labels.add(makeLabel(fm, new String[]{e1.toString(), e2.toString()}, yEntry, align,
+            // The outer labels sit OUTSIDE the box - the upper one above the upper line, the lower
+            // one below the lower line - so their text lies on the plain chart, not on the fill.
+            boolean stopIsUpper = yStop < yTarget;
+            labels.add(makeLabel(fm, new String[]{st.toString()}, yStop, align, stopIsUpper ? -1 : 1,
+                    s.getColor(STOP_FG, Color.WHITE), s.getColor(STOP_BG, DEF_LABEL_BG)));
+            labels.add(makeLabel(fm, new String[]{tt.toString()}, yTarget, align, stopIsUpper ? 1 : -1,
+                    s.getColor(TARGET_FG, Color.WHITE), s.getColor(TARGET_BG, DEF_LABEL_BG)));
+            labels.add(makeLabel(fm, new String[]{e1.toString(), e2.toString()}, yEntry, align, 0,
                     s.getColor(ENTRY_FG, Color.WHITE), s.getColor(ENTRY_BG, Color.BLACK)));
 
             // delete button glued to the right side of the entry label
@@ -865,11 +871,11 @@ public class DollarRiskBox extends Study {
             setBounds(r.union(deleteRect));
         }
 
-        private Label makeLabel(FontMetrics fm, String[] lines, int yCenter, String align, Color fg, Color bg) {
+        private Label makeLabel(FontMetrics fm, String[] lines, int yLine, String align, int place, Color fg, Color bg) {
             Label l = new Label();
             l.text = String.join("\n", lines);
             l.fg = fg;
-            l.bg = bg;
+            l.bg = withOpacity(bg, getSettings().getInteger(LABEL_OPACITY, 70));
             int w = 0;
             for (String line : lines) w = Math.max(w, fm.stringWidth(line));
             l.w = w + LABEL_PAD_X * 2;
@@ -878,7 +884,8 @@ public class DollarRiskBox extends Study {
             if (ALIGN_LEFT.equals(align)) l.x = x1;
             else if (ALIGN_RIGHT.equals(align)) l.x = x2 - l.w;
             else l.x = (x1 + x2) / 2 - l.w / 2;
-            l.y = yCenter - l.h / 2;
+            // place: -1 = above the line, +1 = below it, 0 = centred on it
+            l.y = place < 0 ? yLine - l.h - 2 : place > 0 ? yLine + 2 : yLine - l.h / 2;
             return l;
         }
 
@@ -914,17 +921,20 @@ public class DollarRiskBox extends Study {
             drawLine(gc, ctx, targetLine, yTarget);
             drawLine(gc, ctx, entryLine, yEntry);
 
-            gc.setFont(font);
+            gc.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            var frc = gc.getFontRenderContext();
             for (Label l : labels) {
                 gc.setColor(l.bg);
                 gc.fillRoundRect(l.x, l.y, l.w, l.h, 3, 3);
-                gc.setColor(l.fg);
-                int ty = l.y + LABEL_PAD_Y + l.ascent;
                 String[] lines = l.text.split("\n");
                 int lineH = (l.h - LABEL_PAD_Y * 2) / lines.length;
+                float ty = l.y + LABEL_PAD_Y + l.ascent;
                 for (String line : lines) {
-                    int lw = gc.getFontMetrics().stringWidth(line);
-                    gc.drawString(line, l.x + (l.w - lw) / 2, ty);
+                    java.awt.geom.Rectangle2D vb = font.createGlyphVector(frc, line).getVisualBounds();
+                    float tx = (float) (l.x + (l.w - vb.getWidth()) / 2.0 - vb.getX());
+                    Shape glyphs = font.createGlyphVector(frc, line).getOutline(tx, ty);
+                    gc.setColor(l.fg);
+                    gc.fill(glyphs);
                     ty += lineH;
                 }
             }
@@ -949,6 +959,12 @@ public class DollarRiskBox extends Study {
             gc.setStroke(ctx.isSelected() ? p.getSelectedStroke() : p.getStroke());
             gc.drawLine(x1, y, x2, y);
         }
+    }
+
+    /** Scales a colour's own alpha by the label opacity setting (percent). */
+    private static Color withOpacity(Color c, int percent) {
+        int a = Math.round(c.getAlpha() * Math.max(0, Math.min(100, percent)) / 100f);
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), a);
     }
 
     private static FontMetrics metricsFor(Font font) {
