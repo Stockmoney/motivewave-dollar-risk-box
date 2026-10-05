@@ -55,6 +55,10 @@ public class DollarRiskBox extends Study {
     private static final String FIXED_QTY_ENABLED = "fixedQtyEnabled";
     private static final String FIXED_QTY = "fixedQty";
     private static final String SHOW_PANEL = "showPanel";
+    private static final String PLACE_MODE = "placeMode";
+    private static final String BOX_WIDTH = "boxWidth";
+    private static final String ESC_CANCELS = "escCancels";
+    private static final String PLACE_ONE = "one", PLACE_THREE = "three";
     // Hidden state (no descriptor)
     private static final String BOXES = "boxes";             // "entry,stop,target,start,end;..."
     private static final String PANEL_FX = "panelFx";        // panel position as a fraction of the chart
@@ -97,7 +101,7 @@ public class DollarRiskBox extends Study {
 
     private static final int LABEL_PAD_X = 4;
     private static final int LABEL_PAD_Y = 2;
-    private static final int BOX_BARS = 25;   // width of a new box, in bars
+    private static final int DEF_BOX_BARS = 8;   // width of a new box, in bars on screen
 
     // Binary class name on purpose: the Enums class in mwave_sdk.jar has no InnerClasses
     // attribute, so javac cannot resolve the nested name Enums.ResizeType (same class at runtime).
@@ -123,7 +127,12 @@ public class DollarRiskBox extends Study {
     private long loc0T;
     private double loc0V;
     private boolean bodyModeKnown, bodyUsesHover;
-    private Boolean armed;                  // TRUE = next chart click draws a long, FALSE = short
+    private Boolean armed;                  // TRUE = the chart clicks that follow draw a long, FALSE = short
+    // placing a box by three clicks: 0 = waiting for the entry, 1 = for the stop, 2 = for the target
+    private int placeStep;
+    private double placeEntry, placeStop;
+    private long placeStart;
+    private String placeHint;               // why the last click was not accepted
 
     private ButtonPanel panel;
     private ClickCatcher catcher;
@@ -165,6 +174,12 @@ public class DollarRiskBox extends Study {
                 new BooleanDescriptor(FIXED_QTY_ENABLED, get("LBL_ENABLED"), false));
         var pnl = general.addGroup(get("LBL_PANEL"));
         pnl.addRow(new BooleanDescriptor(SHOW_PANEL, get("LBL_SHOW_PANEL"), true));
+        var placeOptions = new ArrayList<NVP>();
+        placeOptions.add(new NVP(get("LBL_PLACE_THREE"), PLACE_THREE));
+        placeOptions.add(new NVP(get("LBL_PLACE_ONE"), PLACE_ONE));
+        pnl.addRow(new DiscreteDescriptor(PLACE_MODE, get("LBL_PLACE_MODE"), PLACE_THREE, placeOptions));
+        pnl.addRow(new IntegerDescriptor(BOX_WIDTH, get("LBL_BOX_WIDTH"), DEF_BOX_BARS, 2, 500, 1));
+        pnl.addRow(new BooleanDescriptor(ESC_CANCELS, get("LBL_ESC_CANCELS"), true));
 
         sd.addDependency(new EnabledDependency(FIXED_QTY_ENABLED, FIXED_QTY));
 
@@ -309,19 +324,173 @@ public class DollarRiskBox extends Study {
         for (int i = last - n + 1; i <= last; i++) avgRange += series.getHigh(i) - series.getLow(i);
         avgRange /= n;
         double dist = Math.max(avgRange, instr.getTickSize() * 4);
-        long barMs = Math.max(1, series.getStartTime(last) - series.getStartTime(last - 1));
 
         Box b = new Box();
         b.entry = instr.round(ctx.translate2Value(y));
         b.stop = instr.round(isLong ? b.entry - dist : b.entry + dist);
         b.target = instr.round(isLong ? b.entry + dist * 2 : b.entry - dist * 2);
         b.start = ctx.translate2Time(x);
-        b.end = b.start + barMs * BOX_BARS;
+        b.end = boxEnd(b.start);
         if (!b.valid()) return;
         boxes.add(b);
         saveBoxes();
         syncFigures();
         notifyRedraw();
+    }
+
+    /**
+     * End time of a new box that starts at {@code start}: the width on SCREEN of that many bars.
+     * Measured in pixels, not as "start + N bar durations": the time axis is not linear (session
+     * gaps, the compressed empty area right of the last bar), so a time span can come out several
+     * times wider than intended.
+     */
+    private long boxEnd(long start) {
+        int bars = Math.max(1, getSettings().getInteger(BOX_WIDTH, DEF_BOX_BARS));
+        DrawContext ctx = lastCtx;
+        DataContext dc = getDataContext();
+        var series = dc == null ? null : dc.getDataSeries();
+        if (series == null || series.size() < 2) return start + 60_000L * bars;
+        int last = series.size() - 1;
+        if (ctx != null) {
+            double perBar = ctx.translateTimeD(series.getStartTime(last)) - ctx.translateTimeD(series.getStartTime(last - 1));
+            if (perBar >= 1) {
+                long end = ctx.translate2Time(ctx.translateTimeD(start) + perBar * bars);
+                if (end > start) return end;
+            }
+        }
+        return start + Math.max(1, series.getStartTime(last) - series.getStartTime(last - 1)) * bars;
+    }
+
+    private void addBox(double entry, double stop, double target, long start) {
+        DataContext dc = getDataContext();
+        if (dc == null) return;
+        Instrument instr = dc.getInstrument();
+        Box b = new Box();
+        b.entry = instr.round(entry);
+        b.stop = instr.round(stop);
+        b.target = instr.round(target);
+        b.start = start;
+        b.end = boxEnd(start);
+        if (!b.valid()) return;
+        boxes.add(b);
+        saveBoxes();
+        syncFigures();
+        notifyRedraw();
+    }
+
+    private void stopPlacing() {
+        PLACING.remove(this);
+        armed = null;
+        placeStep = 0;
+        placeHint = null;
+    }
+
+    /**
+     * A chart click while Long/Short is armed. One-click mode draws the box at once; three-click mode
+     * takes the entry, then the stop, then the target. The side is the button's: a level clicked on
+     * the wrong side of the entry is refused with a hint.
+     */
+    private void placeClick(Point p) {
+        DrawContext ctx = lastCtx;
+        DataContext dc = getDataContext();
+        if (ctx == null || dc == null) {
+            stopPlacing();
+            return;
+        }
+        boolean isLong = armed;
+        if (PLACE_ONE.equals(getSettings().getString(PLACE_MODE, PLACE_THREE))) {
+            stopPlacing();
+            placeBox(isLong, p.x, p.y);
+            return;
+        }
+        Instrument instr = dc.getInstrument();
+        double tick = instr.getTickSize(), eps = tick / 2;
+        double price = instr.round(ctx.translate2Value(p.y));
+        placeHint = null;
+        if (placeStep == 0) {
+            placeEntry = price;
+            placeStart = ctx.translate2Time(p.x);
+            placeStep = 1;
+        } else if (placeStep == 1) {
+            if (isLong ? price > placeEntry - tick + eps : price < placeEntry + tick - eps) {
+                placeHint = get(isLong ? "HINT_STOP_BELOW" : "HINT_STOP_ABOVE");
+            } else {
+                placeStop = price;
+                placeStep = 2;
+            }
+        } else {
+            if (isLong ? price < placeEntry + tick - eps : price > placeEntry - tick + eps) {
+                placeHint = get(isLong ? "HINT_TARGET_ABOVE" : "HINT_TARGET_BELOW");
+            } else {
+                double entry = placeEntry, stop = placeStop;
+                long start = placeStart;
+                stopPlacing();
+                addBox(entry, stop, price, start);
+                return;
+            }
+        }
+        notifyRedraw();
+    }
+
+    /** What the next chart click will do, shown under the panel while a button is armed. */
+    private String placePrompt() {
+        if (placeHint != null) return placeHint;
+        String what = PLACE_ONE.equals(getSettings().getString(PLACE_MODE, PLACE_THREE)) ? get("LBL_CLICK_CHART")
+                : get(placeStep == 0 ? "HINT_ENTRY" : placeStep == 1 ? "HINT_STOP" : "HINT_TARGET");
+        return getSettings().getBoolean(ESC_CANCELS, true) ? what + " (" + get("HINT_ESC") + ")" : what;
+    }
+
+    // ==================== Escape ====================
+    // The SDK gives a study no keyboard events, but the platform is a JavaFX application: a key filter
+    // on its windows sees Escape. It only acts while a box is being placed here (a Long/Short button
+    // is lit); the key is not consumed, so the platform still handles it as it always did.
+    private static final java.util.Set<DollarRiskBox> PLACING =
+            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+
+    private void trackPlacing() {
+        PLACING.add(this);
+        EscapeKeys.install();
+    }
+
+    /** Escape (platform UI thread): drop the box being placed - nothing is left on the chart. */
+    private void escapePressed() {
+        if (armed == null || !getSettings().getBoolean(ESC_CANCELS, true)) return;
+        stopPlacing();
+        notifyRedraw();
+    }
+
+    /**
+     * Catches the Escape key: a JavaFX key filter on the platform's windows (the platform's UI is pure
+     * JavaFX, nothing else sees the key). Kept in its own class so that a platform without JavaFX loses
+     * only this feature, not the study.
+     */
+    private static final class EscapeKeys {
+        private static final String PROPERTY = "DollarRiskBox.escapeFilter";
+        private static final javafx.event.EventHandler<javafx.scene.input.KeyEvent> FILTER = e -> {
+            if (e.getCode() != javafx.scene.input.KeyCode.ESCAPE) return;
+            DollarRiskBox[] studies;
+            synchronized (PLACING) { studies = PLACING.toArray(new DollarRiskBox[0]); }
+            if (studies.length == 0) return;
+            // on the platform's UI thread; the key itself is not consumed
+            javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
+        };
+
+        /** Idempotent; also replaces the filter of an earlier version of this study that was reloaded
+         *  without restarting the platform. Put on the window itself: the first stop of every key event. */
+        @SuppressWarnings("unchecked")
+        static synchronized void install() {
+            try {
+                for (javafx.stage.Window w : new ArrayList<>(javafx.stage.Window.getWindows())) {
+                    Object old = w.getProperties().put(PROPERTY, FILTER);
+                    if (old == FILTER) continue;
+                    if (old instanceof javafx.event.EventHandler<?> h) {
+                        w.removeEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED,
+                                (javafx.event.EventHandler<javafx.scene.input.KeyEvent>) h);
+                    }
+                    w.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, FILTER);
+                }
+            } catch (Throwable ignored) { }     // no Escape key, everything else works
+        }
     }
 
     // ==================== Interaction ====================
@@ -339,19 +508,21 @@ public class DollarRiskBox extends Study {
         }
         if (panel != null && panel.gripRect != null && panel.gripRect.contains(p)) return true;  // grip: drag only
         if (panel != null && panel.longRect != null && panel.longRect.contains(p)) {
-            armed = Boolean.TRUE.equals(armed) ? null : Boolean.TRUE;
+            boolean off = Boolean.TRUE.equals(armed);      // pressing the lit button again cancels
+            stopPlacing();
+            if (!off) { armed = Boolean.TRUE; trackPlacing(); }
             notifyRedraw();
             return true;
         }
         if (panel != null && panel.shortRect != null && panel.shortRect.contains(p)) {
-            armed = Boolean.FALSE.equals(armed) ? null : Boolean.FALSE;
+            boolean off = Boolean.FALSE.equals(armed);
+            stopPlacing();
+            if (!off) { armed = Boolean.FALSE; trackPlacing(); }
             notifyRedraw();
             return true;
         }
         if (armed != null) {
-            boolean isLong = armed;
-            armed = null;
-            placeBox(isLong, p.x, p.y);
+            placeClick(p);
             return true;
         }
         return false;
@@ -372,6 +543,7 @@ public class DollarRiskBox extends Study {
     public void onHover(java.awt.geom.Point2D loc, int flags, DrawContext ctx) {
         lastHover = loc;
         lastCtx = ctx;
+        if (armed != null && placeStep > 0) notifyRedraw();    // the preview follows the mouse
     }
 
     @Override
@@ -514,14 +686,18 @@ public class DollarRiskBox extends Study {
                         boolean qtyFromRisk, double riskPerContract) {}
 
     private Calc calc(DataContext ctx, Box b) {
+        return calc(ctx, b.entry, b.stop, b.target);
+    }
+
+    private Calc calc(DataContext ctx, double entry, double stop, double target) {
         Instrument instr = ctx.getInstrument();
         Settings s = getSettings();
         double ps = instr.getPointSize() > 0 ? instr.getPointSize() : 1;
         double pv = instr.getPointValue();
 
-        boolean isLong = b.stop < b.entry;
-        double stopDist = Math.abs(b.entry - b.stop);
-        double targetDist = isLong ? b.target - b.entry : b.entry - b.target;   // negative if on the wrong side
+        boolean isLong = stop < entry;
+        double stopDist = Math.abs(entry - stop);
+        double targetDist = isLong ? target - entry : entry - target;   // negative if on the wrong side
         double riskPerContract = stopDist / ps * pv;
 
         double balance = s.getDouble(BALANCE, 50000);
@@ -535,8 +711,8 @@ public class DollarRiskBox extends Study {
         double loss = qty * riskPerContract;
         double profit = qty * targetDist / ps * pv;
         var series = ctx.getDataSeries();
-        double last = series.size() > 0 ? series.getClose(series.size() - 1) : b.entry;
-        double currentPnl = qty * (isLong ? last - b.entry : b.entry - last) / ps * pv;
+        double last = series.size() > 0 ? series.getClose(series.size() - 1) : entry;
+        double currentPnl = qty * (isLong ? last - entry : entry - last) / ps * pv;
         double rr = stopDist > 0 ? targetDist / stopDist : 0;
         return new Calc(rr, qty, loss, profit, balance, currentPnl, !fixed, riskPerContract);
     }
@@ -621,8 +797,48 @@ public class DollarRiskBox extends Study {
             setBounds(ctx.getBounds());
         }
 
+        /** While a box is being placed click by click: the levels chosen so far and, under the mouse,
+         *  what the next click would give (quantity and money at the stop, profit and R/R at the target). */
         @Override
-        public void draw(Graphics2D gc, DrawContext ctx) { }
+        public void draw(Graphics2D gc, DrawContext ctx) {
+            Boolean side = armed;
+            java.awt.geom.Point2D hover = lastHover;
+            if (side == null || placeStep == 0 || hover == null) return;
+            DataContext dc = ctx.getDataContext();
+            Instrument instr = dc.getInstrument();
+            Settings s = getSettings();
+            int xa = ctx.translateTime(placeStart), xb = Math.max(xa + 40, ctx.translateTime(boxEnd(placeStart)));
+            int yE = ctx.translateValue(placeEntry);
+            double price = instr.round(ctx.translate2Value(hover.getY()));
+            int yH = ctx.translateValue(price);
+            double stop = placeStep == 1 ? price : placeStop;
+            int yS = ctx.translateValue(stop);
+
+            gc.setColor(s.getColor(STOP_FILL, DEF_STOP_FILL));
+            gc.fillRect(xa, Math.min(yE, yS), xb - xa, Math.abs(yS - yE));
+            if (placeStep == 2) {
+                gc.setColor(s.getColor(TARGET_FILL, DEF_TARGET_FILL));
+                gc.fillRect(xa, Math.min(yE, yH), xb - xa, Math.abs(yH - yE));
+            }
+            gc.setColor(Color.WHITE);
+            gc.setStroke(new BasicStroke(1f));
+            gc.drawLine(xa, yE, xb, yE);
+
+            Calc c = calc(dc, placeEntry, stop, placeStep == 2 ? price : placeEntry);
+            String text = placeStep == 1
+                    ? "S:" + instr.format(price) + " Q:" + c.qty() + " L:" + money(-c.loss())
+                    : "T:" + instr.format(price) + " P:" + money(c.profit()) + " R/R:" + String.format(Locale.US, "%.2f", c.rr());
+            FontInfo fi = s.getFont(FONT);
+            Font font = fi != null ? fi.getFont() : new Font("SansSerif", Font.PLAIN, 12);
+            gc.setFont(font);
+            gc.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            FontMetrics fm = gc.getFontMetrics();
+            int tx = xa + 4, ty = yH < yE ? yH - 5 : yH + fm.getAscent() + 3;
+            gc.setColor(new Color(25, 25, 25, 200));
+            gc.fillRoundRect(tx - 3, ty - fm.getAscent() - 1, fm.stringWidth(text) + 6, fm.getHeight() + 2, 3, 3);
+            gc.setColor(Color.WHITE);
+            gc.drawString(text, tx, ty);
+        }
 
         @Override
         public boolean contains(double x, double y, DrawContext ctx) {
@@ -695,7 +911,7 @@ public class DollarRiskBox extends Study {
             if (armed != null) {
                 gc.setFont(hintFont);
                 gc.setColor(Color.WHITE);
-                gc.drawString(get("LBL_CLICK_CHART"), longRect.x, py + BH + 13);
+                gc.drawString(placePrompt(), longRect.x, py + BH + 13);
             }
         }
 
