@@ -34,7 +34,10 @@ done
 [[ -f "$SDK" ]] || { echo "MotiveWave SDK jar not found: $SDK (set MW_SDK)" >&2; exit 1; }
 
 rm -rf build && mkdir -p build/classes/dollar_risk_box/nls
-"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$SDK" -d build/classes dollar_risk_box/DollarRiskBox.java
+# JavaFX ships beside the SDK jar (Contents/javafx); the study uses it to catch the Escape key.
+FX="$(dirname "$SDK")/../javafx"
+CP="$SDK"; for j in "$FX"/javafx.*.jar; do [[ -f "$j" ]] && CP="$CP:$j"; done
+"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$CP" -d build/classes dollar_risk_box/DollarRiskBox.java
 cp dollar_risk_box/nls/strings.properties build/classes/dollar_risk_box/nls/
 "$JAR" cf build/DollarRiskBox.jar -C build/classes .
 echo "built build/DollarRiskBox.jar"
