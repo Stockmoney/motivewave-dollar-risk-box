@@ -58,6 +58,7 @@ public class DollarRiskBox extends Study {
     private static final String PLACE_MODE = "placeMode";
     private static final String BOX_WIDTH = "boxWidth";
     private static final String ESC_CANCELS = "escCancels";
+    private static final String DEL_REMOVES = "delRemoves";
     private static final String PLACE_ONE = "one", PLACE_THREE = "three";
     // Hidden state (no descriptor)
     private static final String BOXES = "boxes";             // "entry,stop,target,start,end;..."
@@ -120,6 +121,8 @@ public class DollarRiskBox extends Study {
     private long lastInteraction;           // ms; guards against a missed end-of-resize callback
     private boolean suppressClick;          // the mouse-up that ends a drag also fires onClick
     private java.awt.geom.Point2D lastHover;   // last mouse position over the chart (screen px)
+    private volatile boolean studySelected;    // the platform painted this study as selected on its last repaint
+    private Box lastTouched;                   // the box whose handle was dragged last (Delete falls back to it)
     // whole-box drag bookkeeping
     private double sEntry, sStop, sTarget;
     private long sStart, sEnd;
@@ -180,6 +183,7 @@ public class DollarRiskBox extends Study {
         pnl.addRow(new DiscreteDescriptor(PLACE_MODE, get("LBL_PLACE_MODE"), PLACE_THREE, placeOptions));
         pnl.addRow(new IntegerDescriptor(BOX_WIDTH, get("LBL_BOX_WIDTH"), DEF_BOX_BARS, 2, 500, 1));
         pnl.addRow(new BooleanDescriptor(ESC_CANCELS, get("LBL_ESC_CANCELS"), true));
+        pnl.addRow(new BooleanDescriptor(DEL_REMOVES, get("LBL_DEL_REMOVES"), true));
 
         sd.addDependency(new EnabledDependency(FIXED_QTY_ENABLED, FIXED_QTY));
 
@@ -440,16 +444,27 @@ public class DollarRiskBox extends Study {
         return getSettings().getBoolean(ESC_CANCELS, true) ? what + " (" + get("HINT_ESC") + ")" : what;
     }
 
-    // ==================== Escape ====================
+    // ==================== Escape and Delete ====================
     // The SDK gives a study no keyboard events, but the platform is a JavaFX application: a key filter
-    // on its windows sees Escape. It only acts while a box is being placed here (a Long/Short button
-    // is lit); the key is not consumed, so the platform still handles it as it always did.
+    // on its windows sees the keys.
+    //  - Escape acts only while a box is being placed here (a Long/Short button is lit); the key is not
+    //    consumed, so the platform still handles it as it always did.
+    //  - Delete / Backspace remove the selected box and are consumed, so the platform does not delete the
+    //    whole indicator. They act only while this study is painted as selected AND a box is under the mouse
+    //    (or was dragged last); otherwise the key goes to the platform untouched, and so does every key typed
+    //    into a text field.
     private static final java.util.Set<DollarRiskBox> PLACING =
             java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+    private static final java.util.Set<DollarRiskBox> INSTANCES =
+            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+
+    {
+        INSTANCES.add(this);
+    }
 
     private void trackPlacing() {
         PLACING.add(this);
-        EscapeKeys.install();
+        KeyFilter.install();
     }
 
     /** Escape (platform UI thread): drop the box being placed - nothing is left on the chart. */
@@ -459,26 +474,55 @@ public class DollarRiskBox extends Study {
         notifyRedraw();
     }
 
+    /** The box a Delete press would remove, or null when this study should leave the key alone. */
+    private Box deleteTarget() {
+        if (!studySelected || boxes.isEmpty() || !getSettings().getBoolean(DEL_REMOVES, true)) return null;
+        java.awt.geom.Point2D h = lastHover;
+        if (h != null) {
+            for (int i = boxes.size() - 1; i >= 0; i--) {
+                if (boxes.get(i).fig.bodyContains(h.getX(), h.getY())) return boxes.get(i);
+            }
+        }
+        return lastTouched != null && boxes.contains(lastTouched) ? lastTouched : null;
+    }
+
     /**
-     * Catches the Escape key: a JavaFX key filter on the platform's windows (the platform's UI is pure
-     * JavaFX, nothing else sees the key). Kept in its own class so that a platform without JavaFX loses
-     * only this feature, not the study.
+     * The key filter: a JavaFX filter on the platform's windows (the platform's UI is pure JavaFX, nothing
+     * else sees the keys). Kept in its own class so that a platform without JavaFX loses only these two
+     * features, not the study.
      */
-    private static final class EscapeKeys {
+    private static final class KeyFilter {
         private static final String PROPERTY = "DollarRiskBox.escapeFilter";
+        private static volatile long lastInstall;
         private static final javafx.event.EventHandler<javafx.scene.input.KeyEvent> FILTER = e -> {
-            if (e.getCode() != javafx.scene.input.KeyCode.ESCAPE) return;
+            javafx.scene.input.KeyCode code = e.getCode();
+            if (code == javafx.scene.input.KeyCode.ESCAPE) {
+                DollarRiskBox[] studies;
+                synchronized (PLACING) { studies = PLACING.toArray(new DollarRiskBox[0]); }
+                if (studies.length == 0) return;
+                // on the platform's UI thread; the key itself is not consumed
+                javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
+                return;
+            }
+            if (code != javafx.scene.input.KeyCode.DELETE && code != javafx.scene.input.KeyCode.BACK_SPACE) return;
+            if (e.isShortcutDown() || e.isControlDown() || e.isAltDown() || e.isMetaDown()) return;
+            if (e.getTarget() instanceof javafx.scene.control.TextInputControl) return;      // typing text, not deleting a box
             DollarRiskBox[] studies;
-            synchronized (PLACING) { studies = PLACING.toArray(new DollarRiskBox[0]); }
-            if (studies.length == 0) return;
-            // on the platform's UI thread; the key itself is not consumed
-            javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
+            synchronized (INSTANCES) { studies = INSTANCES.toArray(new DollarRiskBox[0]); }
+            for (DollarRiskBox st : studies) {
+                DollarRiskBox.Box b = st.deleteTarget();
+                if (b == null) continue;
+                e.consume();                                   // the platform must not delete the whole indicator
+                javafx.application.Platform.runLater(() -> st.removeBox(b));
+                return;
+            }
         };
 
         /** Idempotent; also replaces the filter of an earlier version of this study that was reloaded
          *  without restarting the platform. Put on the window itself: the first stop of every key event. */
         @SuppressWarnings("unchecked")
         static synchronized void install() {
+            lastInstall = System.currentTimeMillis();
             try {
                 for (javafx.stage.Window w : new ArrayList<>(javafx.stage.Window.getWindows())) {
                     Object old = w.getProperties().put(PROPERTY, FILTER);
@@ -489,7 +533,12 @@ public class DollarRiskBox extends Study {
                     }
                     w.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, FILTER);
                 }
-            } catch (Throwable ignored) { }     // no Escape key, everything else works
+            } catch (Throwable ignored) { }     // no Escape / Delete keys, everything else works
+        }
+
+        /** Mouse moves are frequent and windows rarely appear: look again at most every few seconds. */
+        static void installOccasionally() {
+            if (System.currentTimeMillis() - lastInstall > 5000) install();
         }
     }
 
@@ -543,11 +592,13 @@ public class DollarRiskBox extends Study {
     public void onHover(java.awt.geom.Point2D loc, int flags, DrawContext ctx) {
         lastHover = loc;
         lastCtx = ctx;
+        KeyFilter.installOccasionally();
         if (armed != null && placeStep > 0) notifyRedraw();    // the preview follows the mouse
     }
 
     @Override
     public void onBeginResize(ResizePoint rp, DrawContext ctx) {
+        if (rp instanceof Handle th) lastTouched = th.owner;
         if (rp instanceof Handle h && h == h.owner.bodyRP) {
             Box b = h.owner;
             sEntry = b.entry; sStop = b.stop; sTarget = b.target; sStart = b.start; sEnd = b.end;
@@ -1126,6 +1177,7 @@ public class DollarRiskBox extends Study {
 
         @Override
         public void draw(Graphics2D gc, DrawContext ctx) {
+            studySelected = ctx.isSelected();
             if (!ok) return;
             int w = x2 - x1;
             gc.setColor(stopFill);
