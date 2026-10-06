@@ -20,6 +20,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 - **Position size from risk.** Fixed $ risk *or* % of balance. Contracts = `floor(risk ÷ (stop distance × point value))`. Optional fixed quantity.
 - **Labels that stay out of the way.** The upper label sits above the upper line and the lower one below the lower line, so the text lies on the plain chart, not on the candles inside the box. Plates are semi-transparent (*Label Opacity*) with white text.
 - **Place a box with clicks.** Press **Long target** or **Short target**, then click the **entry**, the **stop** and the **target**. While you move the mouse a live label shows the **number of contracts and the $ loss** at the stop, and the **profit and R/R** at the target — you see the trade before you commit. Prefer speed? Switch to *1 click* and get a ready-made box. Place as many boxes as you like.
+- **Delete a box with the Delete key.** Select a box and press **Delete** (or Backspace): only that box goes, the indicator and the other boxes stay. It acts only on a selected box under the mouse, so Delete on any other drawing still works as usual.
 - **Made a mistake? Press Esc.** Everything you have placed so far disappears (pressing the lit button again does the same).
 - **Compact boxes.** A new box is a few bars wide (setting *New Box Width*) instead of stretching across the chart.
 - **Move the whole box** by grabbing it anywhere (fill or labels), like in TradingView. Drag the handles to change stop, target or width.
@@ -33,7 +34,9 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 
 1. Download `DollarRiskBox.jar` from the [latest release](../../releases/latest).
 2. Put it into the **`MotiveWave Extensions`** folder in your user home folder (MotiveWave scans it automatically; on macOS: `~/MotiveWave Extensions` — create the folder if it does not exist).
-3. Restart MotiveWave. The indicator appears under **Study → General → Dollar Risk Box**.
+3. Restart MotiveWave. The indicator appears under **Study → Alex Indicators → Dollar Risk Box**.
+
+> The menu folder is called *Alex Indicators* (the author keeps all their MotiveWave indicators there). If you build from source, rename it with the `MENU_GENERAL` line in `dollar_risk_box/nls/strings.properties`.
 
 Add it to a chart once — the **Long / Short** panel appears. Save the chart as a *Template* if you want the panel on every chart.
 
@@ -49,7 +52,7 @@ Add it to a chart once — the **Long / Short** panel appears. Save the chart as
 | Move the whole box | Press and drag it anywhere inside (fill or label) |
 | Change stop / target | Click the box once, drag the dot on the stop or target line |
 | Change the width | Drag the dot at the right end of the entry line |
-| Delete one box | Click its **✕**, or right-click it → *Delete this box* |
+| Delete one box | Select it (click) and press **Delete**, or click its **✕**, or right-click it → *Delete this box* |
 | Flip long ↔ short | Right-click the box → *Flip* |
 | Move the panel | Drag the `⠿` grip |
 
@@ -75,6 +78,7 @@ If you prefer one click, set **New Box** to *1 click*: the click puts a ready-ma
 - **New Box** — *3 clicks* (entry, stop, target; the default) or *1 click* (a ready-made box at the clicked price).
 - **New Box Width (bars)** — how wide a new box is, in bars on the screen (default 8). You can still stretch a box afterwards with the handle on the right end of the entry line.
 - **Escape cancels a box being placed** — on by default.
+- **Delete key removes the selected box (not the whole indicator)** — on by default. Switch it off and Delete goes back to the platform.
 - **Risk Type** — *Fixed Amount* uses **Risk ($)**; *Percent of Balance* uses **Risk (%)** × **Account Balance**.
 - **Account Balance** is typed in by hand. A MotiveWave indicator cannot read your broker account, so update it when your balance changes.
 - **Fixed Quantity** — switch off the risk-based sizing and use a constant number of contracts.
@@ -89,7 +93,7 @@ MNQ, point value $2. Stop 46 points away → $92 risk per contract. With a $200 
 
 ### Protect the panel from accidental deletion
 
-The boxes and the panel live inside one indicator. MotiveWave's trash icon (and *Delete* in the menu) removes the **whole indicator**, panel included. To prevent that, right-click the panel → **Lock Figure**. A locked indicator ignores the trash icon, while everything else keeps working. To remove it on purpose: *Unlock Figure*, then the trash icon.
+The boxes and the panel live inside one indicator. MotiveWave's trash icon (and *Delete* in the menu) removes the **whole indicator**, panel included. The **Delete key** no longer does that for a selected box (see above), but the trash icon still does. To prevent it, right-click the panel → **Lock Figure**. A locked indicator ignores the trash icon, while everything else keeps working. To remove it on purpose: *Unlock Figure*, then the trash icon.
 
 ## Build from source
 
@@ -106,6 +110,10 @@ On Windows, compile by hand: `javac --release 21 -cp "mwave_sdk.jar;<folder with
 You can check the "no orders" claim yourself: `javap -v` on the compiled classes shows no reference to `order_mgmt` or `OrderContext`.
 
 ## Changelog
+
+**1.2.0**
+- **Delete key** removes the selected box and leaves the indicator and the other boxes alone (setting *Delete key removes the selected box*).
+- The menu folder is now **Study → Alex Indicators** (was *General*).
 
 **1.1.0**
 - Place a box with **3 clicks** (entry, stop, target) with a live preview of quantity, $ loss, profit and R/R; **1 click** is still available (setting *New Box*).
