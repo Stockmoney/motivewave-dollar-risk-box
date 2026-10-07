@@ -21,7 +21,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 - **Labels that stay out of the way.** The upper label sits above the upper line and the lower one below the lower line, so the text lies on the plain chart, not on the candles inside the box. Plates are semi-transparent (*Label Opacity*) with white text.
 - **Place a box with clicks.** Press **Long target** or **Short target**, then click the **entry**, the **stop** and the **target**. While you move the mouse a live label shows the **number of contracts and the $ loss** at the stop, and the **profit and R/R** at the target — you see the trade before you commit. Prefer speed? Switch to *1 click* and get a ready-made box. Place as many boxes as you like.
 - **Delete a box with the Delete key.** Select a box and press **Delete** (or Backspace): only that box goes, the indicator and the other boxes stay. It acts only on a selected box under the mouse, so Delete on any other drawing still works as usual.
-- **Made a mistake? Press Esc.** Everything you have placed so far disappears (pressing the lit button again does the same).
+- **Made a mistake? Press Esc.** Everything you have placed so far disappears (pressing the lit button again does the same). When nothing is being placed, **Esc** removes the selected box instead (click the box first; with several boxes, point the mouse at the one you mean).
 - **Compact boxes.** A new box is a few bars wide (setting *New Box Width*) instead of stretching across the chart.
 - **Move the whole box** by grabbing it anywhere (fill or labels), like in TradingView. Drag the handles to change stop, target or width.
 - **Draggable panel** — grab the `⠿` grip and put the panel wherever you like; the position is saved.
@@ -49,6 +49,7 @@ Add it to a chart once — the **Long / Short** panel appears. Save the chart as
 | Plan a long (3 clicks) | Press **Long target**, click the **entry**, then the **stop** (below the entry), then the **target** (above it) |
 | Plan a short (3 clicks) | Press **Short target**, click the **entry**, then the **stop** (above the entry), then the **target** (below it) |
 | Cancel what you are placing | Press **Esc**, or press the lit button again |
+| Remove the selected box with the keyboard | Click the box, then press **Esc** or **Delete** |
 | Move the whole box | Press and drag it anywhere inside (fill or label) |
 | Change stop / target | Click the box once, drag the dot on the stop or target line |
 | Change the width | Drag the dot at the right end of the entry line |
@@ -78,6 +79,7 @@ If you prefer one click, set **New Box** to *1 click*: the click puts a ready-ma
 - **New Box** — *3 clicks* (entry, stop, target; the default) or *1 click* (a ready-made box at the clicked price).
 - **New Box Width (bars)** — how wide a new box is, in bars on the screen (default 8). You can still stretch a box afterwards with the handle on the right end of the entry line.
 - **Escape cancels a box being placed** — on by default.
+- **Escape removes the selected box (when no box is being placed)** — on by default.
 - **Delete key removes the selected box (not the whole indicator)** — on by default. Switch it off and Delete goes back to the platform.
 - **Risk Type** — *Fixed Amount* uses **Risk ($)**; *Percent of Balance* uses **Risk (%)** × **Account Balance**.
 - **Account Balance** is typed in by hand. A MotiveWave indicator cannot read your broker account, so update it when your balance changes.
@@ -110,6 +112,9 @@ On Windows, compile by hand: `javac --release 21 -cp "mwave_sdk.jar;<folder with
 You can check the "no orders" claim yourself: `javap -v` on the compiled classes shows no reference to `order_mgmt` or `OrderContext`.
 
 ## Changelog
+
+**1.3.0**
+- **Esc** also removes the selected box when nothing is being placed (setting *Escape removes the selected box*).
 
 **1.2.0**
 - **Delete key** removes the selected box and leaves the indicator and the other boxes alone (setting *Delete key removes the selected box*).
