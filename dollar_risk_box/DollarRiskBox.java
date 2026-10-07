@@ -59,6 +59,7 @@ public class DollarRiskBox extends Study {
     private static final String BOX_WIDTH = "boxWidth";
     private static final String ESC_CANCELS = "escCancels";
     private static final String DEL_REMOVES = "delRemoves";
+    private static final String ESC_DELETES = "escDeletes";
     private static final String PLACE_ONE = "one", PLACE_THREE = "three";
     // Hidden state (no descriptor)
     private static final String BOXES = "boxes";             // "entry,stop,target,start,end;..."
@@ -184,6 +185,7 @@ public class DollarRiskBox extends Study {
         pnl.addRow(new IntegerDescriptor(BOX_WIDTH, get("LBL_BOX_WIDTH"), DEF_BOX_BARS, 2, 500, 1));
         pnl.addRow(new BooleanDescriptor(ESC_CANCELS, get("LBL_ESC_CANCELS"), true));
         pnl.addRow(new BooleanDescriptor(DEL_REMOVES, get("LBL_DEL_REMOVES"), true));
+        pnl.addRow(new BooleanDescriptor(ESC_DELETES, get("LBL_ESC_DELETES"), true));
 
         sd.addDependency(new EnabledDependency(FIXED_QTY_ENABLED, FIXED_QTY));
 
@@ -476,7 +478,19 @@ public class DollarRiskBox extends Study {
 
     /** The box a Delete press would remove, or null when this study should leave the key alone. */
     private Box deleteTarget() {
-        if (!studySelected || boxes.isEmpty() || !getSettings().getBoolean(DEL_REMOVES, true)) return null;
+        return target(DEL_REMOVES);
+    }
+
+    /** The box an Escape press would remove (nothing is being placed): the selected indicator's box under the mouse. */
+    private Box escapeTarget() {
+        Box b = target(ESC_DELETES);
+        // the indicator is selected and has exactly one box: that is the one the trader means, wherever the mouse is
+        if (b == null && studySelected && boxes.size() == 1 && getSettings().getBoolean(ESC_DELETES, true)) return boxes.get(0);
+        return b;
+    }
+
+    private Box target(String setting) {
+        if (!studySelected || boxes.isEmpty() || !getSettings().getBoolean(setting, true)) return null;
         java.awt.geom.Point2D h = lastHover;
         if (h != null) {
             for (int i = boxes.size() - 1; i >= 0; i--) {
@@ -499,9 +513,21 @@ public class DollarRiskBox extends Study {
             if (code == javafx.scene.input.KeyCode.ESCAPE) {
                 DollarRiskBox[] studies;
                 synchronized (PLACING) { studies = PLACING.toArray(new DollarRiskBox[0]); }
-                if (studies.length == 0) return;
-                // on the platform's UI thread; the key itself is not consumed
-                javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
+                if (studies.length > 0) {
+                    // a box is being placed: Escape cancels that (on the platform's UI thread; the key is not consumed)
+                    javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
+                    return;
+                }
+                if (e.isShortcutDown() || e.isControlDown() || e.isAltDown() || e.isMetaDown()) return;
+                if (e.getTarget() instanceof javafx.scene.control.TextInputControl) return;   // a text field's own Escape
+                DollarRiskBox[] all;
+                synchronized (INSTANCES) { all = INSTANCES.toArray(new DollarRiskBox[0]); }
+                for (DollarRiskBox st : all) {
+                    DollarRiskBox.Box b = st.escapeTarget();
+                    if (b == null) continue;
+                    javafx.application.Platform.runLater(() -> st.removeBox(b));   // not consumed: the platform may still deselect
+                    return;
+                }
                 return;
             }
             if (code != javafx.scene.input.KeyCode.DELETE && code != javafx.scene.input.KeyCode.BACK_SPACE) return;
