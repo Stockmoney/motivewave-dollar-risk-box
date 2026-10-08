@@ -20,7 +20,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 - **Position size from risk.** Fixed $ risk *or* % of balance. Contracts = `floor(risk ÷ (stop distance × point value))`. Optional fixed quantity.
 - **Labels that stay out of the way.** The upper label sits above the upper line and the lower one below the lower line, so the text lies on the plain chart, not on the candles inside the box. Plates are semi-transparent (*Label Opacity*) with white text.
 - **Place a box with clicks.** Press **Long target** or **Short target**, then click the **entry**, the **stop** and the **target**. While you move the mouse a live label shows the **number of contracts and the $ loss** at the stop, and the **profit and R/R** at the target — you see the trade before you commit. Prefer speed? Switch to *1 click* and get a ready-made box. Place as many boxes as you like.
-- **Delete a box with the Delete key.** Select a box and press **Delete** (or Backspace): only that box goes, the indicator and the other boxes stay. It acts only on a selected box under the mouse, so Delete on any other drawing still works as usual.
+- **Delete a box with the Delete key.** Select a box and press **Delete** (or Backspace): only that box goes, the indicator and the other boxes stay. For several boxes, point at the one you want to remove or click it first. The indicator must be selected; Delete on other drawings still works as usual.
 - **Made a mistake? Press Esc.** Everything you have placed so far disappears (pressing the lit button again does the same). When nothing is being placed, **Esc** removes the selected box instead (click the box first; with several boxes, point the mouse at the one you mean).
 - **Compact boxes.** A new box is a few bars wide (setting *New Box Width*) instead of stretching across the chart.
 - **Move the whole box** by grabbing it anywhere (fill or labels), like in TradingView. Drag the handles to change stop, target or width.
@@ -111,7 +111,23 @@ On Windows, compile by hand: `javac --release 21 -cp "mwave_sdk.jar;<folder with
 
 You can check the "no orders" claim yourself: `javap -v` on the compiled classes shows no reference to `order_mgmt` or `OrderContext`.
 
+### Regression check (macOS)
+
+After building, run the clone-isolation check with your JDK:
+
+```bash
+java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applications/MotiveWave.app/Contents/Java/*:/Applications/MotiveWave.app/Contents/javafx/*' tests/DeletionRegression.java
+```
+
+Expected result: `Deletion regression: 16 checks passed`. This checks clone ownership and state isolation; keyboard and mouse deletion are verified in the running platform separately.
+
 ## Changelog
+
+**1.3.1**
+- Fixed **Esc**, **Delete / Backspace**, and the per-box **✕** becoming unreliable after indicator cloning or opening settings. The selected box is removed while the panel stays on the chart.
+- Copied indicators now keep independent box and figure state; keyboard handlers register the live chart instance.
+- Box deletion runs immediately on the JavaFX UI thread. Stale placement state no longer blocks Esc deletion.
+- Added 16 regression checks for clone isolation. Esc, Delete / Backspace, and ✕ were also checked in MotiveWave 7.1.1 on macOS, including after opening settings.
 
 **1.3.0**
 - **Esc** also removes the selected box when nothing is being placed (setting *Escape removes the selected box*).

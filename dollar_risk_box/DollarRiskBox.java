@@ -115,7 +115,7 @@ public class DollarRiskBox extends Study {
             com.motivewave.platform.sdk.common.Enums$ResizeType.ALL;
 
     // ==================== State ====================
-    private final List<Box> boxes = new ArrayList<>();
+    private List<Box> boxes = new ArrayList<>();
     private String loadedBoxes;             // last BOXES string applied, to skip no-op reloads
     private ResizePoint activeRP;           // the handle being dragged right now
     private boolean interacting;
@@ -222,6 +222,42 @@ public class DollarRiskBox extends Study {
     }
 
     // ==================== Lifecycle ====================
+    /** Study.clone() is shallow for subclass fields. Never share boxes or figures with a
+     * settings preview / chart copy: each figure's inner-class owner must be the copy. */
+    @Override
+    public DollarRiskBox clone() {
+        DollarRiskBox copy = (DollarRiskBox) super.clone();
+        if (copy == null) return null;
+        copy.boxes = new ArrayList<>();
+        for (Box b : boxes) {
+            Box next = copy.new Box();
+            next.entry = b.entry; next.stop = b.stop; next.target = b.target;
+            next.start = b.start; next.end = b.end;
+            copy.boxes.add(next);
+        }
+        copy.loadedBoxes = loadedBoxes;
+        copy.activeRP = null;
+        copy.interacting = false;
+        copy.lastInteraction = 0;
+        copy.suppressClick = false;
+        copy.lastHover = null;
+        copy.studySelected = false;
+        copy.lastTouched = null;
+        copy.armed = null;
+        copy.placeStep = 0;
+        copy.placeHint = null;
+        copy.panel = null; copy.catcher = null; copy.grip = null;
+        copy.panelDragPos = null; copy.lastCtx = null;
+        copy.clearFigures();
+        return copy;
+    }
+
+    @Override
+    public void destroy() {
+        PLACING.remove(this);
+        INSTANCES.remove(this);
+        super.destroy();
+    }
     @Override
     public void clearState() {
         // Called by the platform as routine housekeeping (also after every settings write):
@@ -291,6 +327,7 @@ public class DollarRiskBox extends Study {
 
     /** Make sure every figure we own is on the chart (the platform clears them freely). */
     private void syncFigures() {
+        registerKeys();
         if (panel == null) {
             catcher = new ClickCatcher();
             panel = new ButtonPanel();
@@ -449,8 +486,8 @@ public class DollarRiskBox extends Study {
     // ==================== Escape and Delete ====================
     // The SDK gives a study no keyboard events, but the platform is a JavaFX application: a key filter
     // on its windows sees the keys.
-    //  - Escape acts only while a box is being placed here (a Long/Short button is lit); the key is not
-    //    consumed, so the platform still handles it as it always did.
+    //  - Escape cancels placement, otherwise removes a selected box. Completed-box deletion
+    //    is consumed so the platform cannot deselect or remove the entire indicator first.
     //  - Delete / Backspace remove the selected box and are consumed, so the platform does not delete the
     //    whole indicator. They act only while this study is painted as selected AND a box is under the mouse
     //    (or was dragged last); otherwise the key goes to the platform untouched, and so does every key typed
@@ -460,8 +497,10 @@ public class DollarRiskBox extends Study {
     private static final java.util.Set<DollarRiskBox> INSTANCES =
             java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
 
-    {
+    // Register live instances in callbacks too: Java cloning does not run initializers.
+    private void registerKeys() {
         INSTANCES.add(this);
+        KeyFilter.installOccasionally();
     }
 
     private void trackPlacing() {
@@ -497,7 +536,8 @@ public class DollarRiskBox extends Study {
                 if (boxes.get(i).fig.bodyContains(h.getX(), h.getY())) return boxes.get(i);
             }
         }
-        return lastTouched != null && boxes.contains(lastTouched) ? lastTouched : null;
+        if (lastTouched != null && boxes.contains(lastTouched)) return lastTouched;
+        return boxes.size() == 1 ? boxes.get(0) : null;
     }
 
     /**
@@ -508,58 +548,76 @@ public class DollarRiskBox extends Study {
     private static final class KeyFilter {
         private static final String PROPERTY = "DollarRiskBox.escapeFilter";
         private static volatile long lastInstall;
+        private static boolean failureLogged;
         private static final javafx.event.EventHandler<javafx.scene.input.KeyEvent> FILTER = e -> {
             javafx.scene.input.KeyCode code = e.getCode();
-            if (code == javafx.scene.input.KeyCode.ESCAPE) {
-                DollarRiskBox[] studies;
-                synchronized (PLACING) { studies = PLACING.toArray(new DollarRiskBox[0]); }
-                if (studies.length > 0) {
-                    // a box is being placed: Escape cancels that (on the platform's UI thread; the key is not consumed)
-                    javafx.application.Platform.runLater(() -> { for (DollarRiskBox st : studies) st.escapePressed(); });
-                    return;
-                }
-                if (e.isShortcutDown() || e.isControlDown() || e.isAltDown() || e.isMetaDown()) return;
-                if (e.getTarget() instanceof javafx.scene.control.TextInputControl) return;   // a text field's own Escape
-                DollarRiskBox[] all;
-                synchronized (INSTANCES) { all = INSTANCES.toArray(new DollarRiskBox[0]); }
-                for (DollarRiskBox st : all) {
-                    DollarRiskBox.Box b = st.escapeTarget();
-                    if (b == null) continue;
-                    javafx.application.Platform.runLater(() -> st.removeBox(b));   // not consumed: the platform may still deselect
-                    return;
-                }
-                return;
-            }
-            if (code != javafx.scene.input.KeyCode.DELETE && code != javafx.scene.input.KeyCode.BACK_SPACE) return;
+            if (code != javafx.scene.input.KeyCode.ESCAPE && code != javafx.scene.input.KeyCode.DELETE
+                    && code != javafx.scene.input.KeyCode.BACK_SPACE) return;
             if (e.isShortcutDown() || e.isControlDown() || e.isAltDown() || e.isMetaDown()) return;
-            if (e.getTarget() instanceof javafx.scene.control.TextInputControl) return;      // typing text, not deleting a box
+            if (typing(e.getTarget())) return;
+            if (e.getSource() instanceof javafx.stage.Window window && window.getScene() != null
+                    && typing(window.getScene().getFocusOwner())) return;
+            if (code == javafx.scene.input.KeyCode.ESCAPE) {
+                DollarRiskBox[] placing;
+                synchronized (PLACING) { placing = PLACING.toArray(new DollarRiskBox[0]); }
+                boolean cancelled = false;
+                for (DollarRiskBox st : placing) {
+                    if (st.armed == null) { PLACING.remove(st); continue; }
+                    if (!st.getSettings().getBoolean(ESC_CANCELS, true)) continue;
+                    st.escapePressed();
+                    cancelled = true;
+                }
+                // Stale / disabled placement entries must not disable deletion of completed boxes.
+                if (cancelled) return;
+            }
             DollarRiskBox[] studies;
             synchronized (INSTANCES) { studies = INSTANCES.toArray(new DollarRiskBox[0]); }
             for (DollarRiskBox st : studies) {
-                DollarRiskBox.Box b = st.deleteTarget();
+                DollarRiskBox.Box b = code == javafx.scene.input.KeyCode.ESCAPE ? st.escapeTarget() : st.deleteTarget();
                 if (b == null) continue;
-                e.consume();                                   // the platform must not delete the whole indicator
-                javafx.application.Platform.runLater(() -> st.removeBox(b));
+                e.consume();
+                // Filters already run on the JavaFX UI thread; do not let deselection or a
+                // settings reload replace the target before the queued removal runs.
+                st.removeBox(b);
+                System.out.println("DollarRiskBox: " + code + " removed box; remaining=" + st.boxes.size());
                 return;
             }
         };
+
+        private static boolean typing(javafx.event.EventTarget target) {
+            if (!(target instanceof javafx.scene.Node node)) return false;
+            for (javafx.scene.Node n = node; n != null; n = n.getParent()) {
+                if (n instanceof javafx.scene.control.TextInputControl) return true;
+            }
+            return false;
+        }
 
         /** Idempotent; also replaces the filter of an earlier version of this study that was reloaded
          *  without restarting the platform. Put on the window itself: the first stop of every key event. */
         @SuppressWarnings("unchecked")
         static synchronized void install() {
+            if (!javafx.application.Platform.isFxApplicationThread()) {
+                javafx.application.Platform.runLater(KeyFilter::install);
+                return;
+            }
             lastInstall = System.currentTimeMillis();
             try {
                 for (javafx.stage.Window w : new ArrayList<>(javafx.stage.Window.getWindows())) {
-                    Object old = w.getProperties().put(PROPERTY, FILTER);
+                    Object old = w.getProperties().get(PROPERTY);
                     if (old == FILTER) continue;
                     if (old instanceof javafx.event.EventHandler<?> h) {
                         w.removeEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED,
                                 (javafx.event.EventHandler<javafx.scene.input.KeyEvent>) h);
                     }
                     w.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, FILTER);
+                    w.getProperties().put(PROPERTY, FILTER);
                 }
-            } catch (Throwable ignored) { }     // no Escape / Delete keys, everything else works
+            } catch (Throwable failure) {
+                if (!failureLogged) {
+                    failureLogged = true;
+                    System.err.println("DollarRiskBox: keyboard filter unavailable: " + failure);
+                }
+            }
         }
 
         /** Mouse moves are frequent and windows rarely appear: look again at most every few seconds. */
@@ -571,6 +629,8 @@ public class DollarRiskBox extends Study {
     // ==================== Interaction ====================
     @Override
     public boolean onClick(Point p, int flags) {
+        registerKeys();
+        lastHover = new java.awt.geom.Point2D.Double(p.x, p.y);
         if (suppressClick) {           // mouse-up of a drag, not a real click
             suppressClick = false;
             return true;
@@ -600,6 +660,13 @@ public class DollarRiskBox extends Study {
             placeClick(p);
             return true;
         }
+        for (int i = boxes.size() - 1; i >= 0; i--) {
+            Box b = boxes.get(i);
+            if (b.fig.bodyContains(p.x, p.y)) {
+                lastTouched = b;
+                return false; // the platform still selects the indicator
+            }
+        }
         return false;
     }
 
@@ -618,12 +685,14 @@ public class DollarRiskBox extends Study {
     public void onHover(java.awt.geom.Point2D loc, int flags, DrawContext ctx) {
         lastHover = loc;
         lastCtx = ctx;
-        KeyFilter.installOccasionally();
+        registerKeys();
         if (armed != null && placeStep > 0) notifyRedraw();    // the preview follows the mouse
     }
 
     @Override
     public void onBeginResize(ResizePoint rp, DrawContext ctx) {
+        registerKeys();
+        studySelected = ctx.isSelected();
         if (rp instanceof Handle th) lastTouched = th.owner;
         if (rp instanceof Handle h && h == h.owner.bodyRP) {
             Box b = h.owner;
