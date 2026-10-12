@@ -86,6 +86,7 @@ If you prefer one click, set **New Box** to *1 click*: the click puts a ready-ma
 - **Fixed Quantity** — switch off the risk-based sizing and use a constant number of contracts.
 - **Format → Label Opacity** — transparency of the label plates (default 70 %; lower = more see-through, the white text stays readable at any value).
 - **Format → Balance** — also show your account balance on the entry label (off by default, to keep that label short).
+- **Format → Minimal labels (no prices)** — leave the prices out of the labels: the stop shows only the loss (`L:-$242.00`), the target only the profit (`P:$484.00`), the entry label only P/L, R/R and quantity, and the hint under the cursor while you place a box has no prices either. A much smaller box on the chart. Off by default.
 
 ![Format](docs/settings-format.jpg)
 
@@ -122,6 +123,9 @@ java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applicatio
 Expected result: `Deletion regression: 16 checks passed`. This checks clone ownership and state isolation; keyboard and mouse deletion are verified in the running platform separately.
 
 ## Changelog
+
+**1.4.0**
+- New setting **Minimal labels (no prices)** (*Format* tab): labels without prices, also while a box is being placed. Off by default, so nothing changes until you switch it on.
 
 **1.3.1**
 - Fixed **Esc**, **Delete / Backspace**, and the per-box **✕** becoming unreliable after indicator cloning or opening settings. The selected box is removed while the panel stays on the chart.
