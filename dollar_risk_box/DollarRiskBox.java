@@ -83,6 +83,7 @@ public class DollarRiskBox extends Study {
     private static final String SHOW_CURRENT_PNL = "showCurrentPnl";
     private static final String SHOW_PERCENT = "showPercent";
     private static final String SHOW_BALANCE = "showBalance";
+    private static final String MIN_VISUAL = "minVisual";            // true = minimal labels: no prices
     private static final String LABEL_OPACITY = "labelOpacity";
     private static final String SHOW_QTY = "showQty";
     private static final String EXTEND_RIGHT = "extendRight";
@@ -211,11 +212,12 @@ public class DollarRiskBox extends Study {
         f.addRow(new IntegerDescriptor(LABEL_OPACITY, get("LBL_LABEL_OPACITY"), 70, 0, 100, 5));
         var show = format.addGroup("");
         show.addRow(new BooleanDescriptor(SHOW_LABELS, get("LBL_SHOW_LABELS"), true),
-                new BooleanDescriptor(SHOW_BALANCE, get("LBL_SHOW_BALANCE"), false));
-        show.addRow(new BooleanDescriptor(SHOW_CURRENT_PNL, get("LBL_SHOW_CURRENT_PNL"), true),
-                new BooleanDescriptor(SHOW_PERCENT, get("LBL_SHOW_PERCENT"), true));
-        show.addRow(new BooleanDescriptor(SHOW_QTY, get("LBL_SHOW_QTY"), true),
-                new BooleanDescriptor(EXTEND_RIGHT, get("LBL_EXTEND_RIGHT"), false));
+                new BooleanDescriptor(MIN_VISUAL, get("LBL_MIN_VISUAL"), false));
+        show.addRow(new BooleanDescriptor(SHOW_BALANCE, get("LBL_SHOW_BALANCE"), false),
+                new BooleanDescriptor(SHOW_CURRENT_PNL, get("LBL_SHOW_CURRENT_PNL"), true));
+        show.addRow(new BooleanDescriptor(SHOW_PERCENT, get("LBL_SHOW_PERCENT"), true),
+                new BooleanDescriptor(SHOW_QTY, get("LBL_SHOW_QTY"), true));
+        show.addRow(new BooleanDescriptor(EXTEND_RIGHT, get("LBL_EXTEND_RIGHT"), false));
 
         createRD();
         sd.addQuickSettings(RISK_TYPE, RISK_AMOUNT, RISK_PERCENT, BALANCE);
@@ -868,6 +870,34 @@ public class DollarRiskBox extends Study {
         return (v < -0.0049 ? "-$" : "$") + s;
     }
 
+    /**
+     * The text of the three labels: {stop lines, target lines, entry lines}. With {@code minVisual} on the
+     * prices (S:, T:, E:) are left out and the labels shrink to money, R/R and quantity: the entry label loses
+     * its price line (or both lines of its first row when P/L is off too), so a box takes far less room on the chart.
+     */
+    static String[][] labelLines(boolean minVisual, java.util.function.DoubleFunction<String> price,
+                                 double entry, double stop, double target, Calc c,
+                                 boolean showPct, boolean showBal, boolean showQty, boolean showPnl) {
+        boolean showPrice = !minVisual;
+        StringBuilder st = new StringBuilder(showPrice ? "S:" + price.apply(stop) + " L:" : "L:").append(money(-c.loss()));
+        if (showPct && c.balance() > 0) st.append(" (").append(num(c.loss() / c.balance() * 100)).append("%)");
+
+        StringBuilder tt = new StringBuilder(showPrice ? "T:" + price.apply(target) + " P:" : "P:").append(money(c.profit()));
+        if (showPct && c.balance() > 0) tt.append(" (").append(num(c.profit() / c.balance() * 100)).append("%)");
+
+        StringBuilder e1 = new StringBuilder(showPrice ? "E:" + price.apply(entry) : "");
+        if (showPnl) e1.append(showPrice ? " P/L:" : "P/L:").append(money(c.currentPnl()));
+        StringBuilder e2 = new StringBuilder("R/R:" + String.format(Locale.US, "%.2f", c.rr()));
+        if (showQty) {
+            e2.append(" Q:").append(c.qty());
+            if (c.qty() == 0 && c.qtyFromRisk()) e2.append(" (1 = ").append(money(c.riskPerContract())).append(")");
+        }
+        if (showBal) e2.append(" B:").append(num(c.balance()));
+
+        String[] entryLines = e1.length() > 0 ? new String[]{e1.toString(), e2.toString()} : new String[]{e2.toString()};
+        return new String[][]{{st.toString()}, {tt.toString()}, entryLines};
+    }
+
     private static String num(double v) {
         return String.format(Locale.US, "%,.2f", v);
     }
@@ -971,9 +1001,10 @@ public class DollarRiskBox extends Study {
             gc.drawLine(xa, yE, xb, yE);
 
             Calc c = calc(dc, placeEntry, stop, placeStep == 2 ? price : placeEntry);
+            boolean noPrice = s.getBoolean(MIN_VISUAL, false);            // minimal labels: no prices here either
             String text = placeStep == 1
-                    ? "S:" + instr.format(price) + " Q:" + c.qty() + " L:" + money(-c.loss())
-                    : "T:" + instr.format(price) + " P:" + money(c.profit()) + " R/R:" + String.format(Locale.US, "%.2f", c.rr());
+                    ? (noPrice ? "" : "S:" + instr.format(price) + " ") + "Q:" + c.qty() + " L:" + money(-c.loss())
+                    : (noPrice ? "" : "T:" + instr.format(price) + " ") + "P:" + money(c.profit()) + " R/R:" + String.format(Locale.US, "%.2f", c.rr());
             FontInfo fi = s.getFont(FONT);
             Font font = fi != null ? fi.getFont() : new Font("SansSerif", Font.PLAIN, 12);
             gc.setFont(font);
@@ -1196,31 +1227,19 @@ public class DollarRiskBox extends Study {
             boolean showQty = s.getBoolean(SHOW_QTY, true);
             boolean showPnl = s.getBoolean(SHOW_CURRENT_PNL, true);
 
-            StringBuilder st = new StringBuilder("S:" + instr.format(b.stop) + " L:" + money(-c.loss()));
-            if (showPct && c.balance() > 0) st.append(" (").append(num(c.loss() / c.balance() * 100)).append("%)");
-
-            StringBuilder tt = new StringBuilder("T:" + instr.format(b.target) + " P:" + money(c.profit()));
-            if (showPct && c.balance() > 0) tt.append(" (").append(num(c.profit() / c.balance() * 100)).append("%)");
-
-            StringBuilder e1 = new StringBuilder("E:" + instr.format(b.entry));
-            if (showPnl) e1.append(" P/L:").append(money(c.currentPnl()));
-            StringBuilder e2 = new StringBuilder("R/R:" + String.format(Locale.US, "%.2f", c.rr()));
-            if (showQty) {
-                e2.append(" Q:").append(c.qty());
-                if (c.qty() == 0 && c.qtyFromRisk()) e2.append(" (1 = ").append(money(c.riskPerContract())).append(")");
-            }
-            if (showBal) e2.append(" B:").append(num(c.balance()));
+            String[][] text = labelLines(s.getBoolean(MIN_VISUAL, false), instr::format, b.entry, b.stop, b.target,
+                    c, showPct, showBal, showQty, showPnl);
 
             FontMetrics fm = metricsFor(font);
             String align = s.getString(TEXT_ALIGN, ALIGN_MIDDLE);
             // The outer labels sit OUTSIDE the box - the upper one above the upper line, the lower
             // one below the lower line - so their text lies on the plain chart, not on the fill.
             boolean stopIsUpper = yStop < yTarget;
-            labels.add(makeLabel(fm, new String[]{st.toString()}, yStop, align, stopIsUpper ? -1 : 1,
+            labels.add(makeLabel(fm, text[0], yStop, align, stopIsUpper ? -1 : 1,
                     s.getColor(STOP_FG, Color.WHITE), s.getColor(STOP_BG, DEF_LABEL_BG)));
-            labels.add(makeLabel(fm, new String[]{tt.toString()}, yTarget, align, stopIsUpper ? 1 : -1,
+            labels.add(makeLabel(fm, text[1], yTarget, align, stopIsUpper ? 1 : -1,
                     s.getColor(TARGET_FG, Color.WHITE), s.getColor(TARGET_BG, DEF_LABEL_BG)));
-            labels.add(makeLabel(fm, new String[]{e1.toString(), e2.toString()}, yEntry, align, 0,
+            labels.add(makeLabel(fm, text[2], yEntry, align, 0,
                     s.getColor(ENTRY_FG, Color.WHITE), s.getColor(ENTRY_BG, Color.BLACK)));
 
             // delete button glued to the right side of the entry label
