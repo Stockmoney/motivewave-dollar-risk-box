@@ -125,6 +125,7 @@ public class DollarRiskBox extends Study {
     private boolean interacting;
     private long lastInteraction;           // ms; guards against a missed end-of-resize callback
     private boolean suppressClick;          // the mouse-up that ends a drag also fires onClick
+    private long dragEndedAt;               // when the last drag ended: only a click right after it is that mouse-up
     private java.awt.geom.Point2D lastHover;   // last mouse position over the chart (screen px)
     private volatile boolean studySelected;    // the platform painted this study as selected on its last repaint
     private Box lastTouched;                   // the box whose handle was dragged last (Delete falls back to it)
@@ -268,6 +269,7 @@ public class DollarRiskBox extends Study {
         copy.interacting = false;
         copy.lastInteraction = 0;
         copy.suppressClick = false;
+        copy.dragEndedAt = 0;
         copy.lastHover = null;
         copy.studySelected = false;
         copy.lastTouched = null;
@@ -678,7 +680,9 @@ public class DollarRiskBox extends Study {
         lastHover = new java.awt.geom.Point2D.Double(p.x, p.y);
         if (suppressClick) {           // mouse-up of a drag, not a real click
             suppressClick = false;
-            return true;
+            // 9 Nov 2026: when the platform ends a drag WITHOUT a click, the flag stayed and ate the next real press
+            // (a button "needed a second click"); only a click within 400 ms of the drag's end is its mouse-up
+            if (System.currentTimeMillis() - dragEndedAt < 400) return true;
         }
         for (Box b : new ArrayList<>(boxes)) {
             if (b.fig.deleteRect != null && b.fig.deleteRect.contains(p)) {
@@ -830,6 +834,7 @@ public class DollarRiskBox extends Study {
         interacting = false;
         activeRP = null;
         suppressClick = true;
+        dragEndedAt = System.currentTimeMillis();
         syncFigures();
         notifyRedraw();
     }

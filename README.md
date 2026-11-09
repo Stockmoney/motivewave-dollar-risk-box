@@ -128,6 +128,9 @@ Expected result: `Deletion regression: 16 checks passed`. This checks clone owne
 
 ## Changelog
 
+**1.6.1**
+- Buttons react to the first click: after a drag (a box, an edge or the panel) the platform sometimes sends no mouse-up click, and the next real press was taken for it and ignored. Now only a click within 0.4 s of the end of a drag is ignored.
+
 **1.6.0**
 - Commissions: new settings **Commission** (Auto / Lucid Trading table / The value below) and **Commission per side ($)**. Both commissions count in the risk per contract (so in the number of contracts), the profit and the live P/L. The typed value is $0.00 by default: unless you are connected to Lucid Trading, nothing changes.
 - The indicator is now called **Dollar Risk Box V1** in the menu; [V2](https://github.com/Stockmoney/motivewave-dollar-risk-box-v2) is a separate indicator. Saved charts keep working (the indicator's id did not change).
