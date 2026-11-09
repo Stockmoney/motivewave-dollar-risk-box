@@ -11,6 +11,8 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 
 ![Overview](docs/overview.jpg)
 
+> **This is V1.** In the platform's menu it is called *Dollar Risk Box V1*. [Dollar Risk Box V2](https://github.com/Stockmoney/motivewave-dollar-risk-box-v2) is a separate indicator with the risk box of the author's *Futures Tester*: one tool, the side follows the stop, an honest 1R with slippage and commissions. Both can be installed side by side.
+
 > **Display only.** The indicator is a plain MotiveWave *Study*. It has no access to the order API and **cannot place, modify or cancel orders**. It only draws and calculates.
 
 ## Features
@@ -34,7 +36,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 
 1. Download `DollarRiskBox.jar` from the [latest release](../../releases/latest).
 2. Put it into the **`MotiveWave Extensions`** folder in your user home folder (MotiveWave scans it automatically; on macOS: `~/MotiveWave Extensions` — create the folder if it does not exist).
-3. Restart MotiveWave. The indicator appears under **Study → Alex Indicators → Dollar Risk Box**.
+3. Restart MotiveWave. The indicator appears under **Study → Alex Indicators → Dollar Risk Box V1**.
 
 > The menu folder is called *Alex Indicators* (the author keeps all their MotiveWave indicators there). If you build from source, rename it with the `MENU_GENERAL` line in `dollar_risk_box/nls/strings.properties`.
 
@@ -85,6 +87,7 @@ If you prefer one click, set **New Box** to *1 click*: the click puts a ready-ma
 - **Risk Type** — *Fixed Amount* uses **Risk ($)**; *Percent of Balance* uses **Risk (%)** × **Account Balance**.
 - **Account Balance** is typed in by hand. A MotiveWave indicator cannot read your broker account, so update it when your balance changes.
 - **Fixed Quantity** — switch off the risk-based sizing and use a constant number of contracts.
+- **Commission** and **Commission per side ($)** — both commissions (entry and exit) count in the risk per contract, the profit and the live P/L. *Auto* (the default): if MotiveWave is connected to Lucid Trading (the platform's log says so), Lucid's published per-side commission for the product is used (MNQ, MES, MYM, M2K, MCL $0.50; MGC $0.80; NQ, ES, YM, RTY $1.75; GC $2.30 …); otherwise the value typed below — $0.00 by default, so nothing changes until you type yours. *Lucid Trading table* always uses that table; *The value below* always the typed value. Check the numbers with your broker.
 - **Format → Label Opacity** — transparency of the label plates (default 70 %; lower = more see-through, the white text stays readable at any value).
 - **Format → Balance** — also show your account balance on the entry label (off by default, to keep that label short).
 - **Format → Minimal labels (no prices)** — leave the prices out of the labels: the stop shows only the loss (`L:-$242.00`), the target only the profit (`P:$484.00`), the entry label only P/L, R/R and quantity, and the hint under the cursor while you place a box has no prices either. A much smaller box on the chart. Off by default.
@@ -124,6 +127,11 @@ java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applicatio
 Expected result: `Deletion regression: 16 checks passed`. This checks clone ownership and state isolation; keyboard and mouse deletion are verified in the running platform separately.
 
 ## Changelog
+
+**1.6.0**
+- Commissions: new settings **Commission** (Auto / Lucid Trading table / The value below) and **Commission per side ($)**. Both commissions count in the risk per contract (so in the number of contracts), the profit and the live P/L. The typed value is $0.00 by default: unless you are connected to Lucid Trading, nothing changes.
+- The indicator is now called **Dollar Risk Box V1** in the menu; [V2](https://github.com/Stockmoney/motivewave-dollar-risk-box-v2) is a separate indicator. Saved charts keep working (the indicator's id did not change).
+- Escape and Delete never act twice when V1 and V2 are on one chart; installing V1 from source no longer removes V2's jar.
 
 **1.5.0**
 - New setting **Keep above my drawings** (on by default): lines you draw no longer cover the panel buttons and the box handles — the indicator moves itself above them, as the chart's *Move Front* does, also for lines drawn later.

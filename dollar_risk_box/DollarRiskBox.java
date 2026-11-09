@@ -61,6 +61,8 @@ public class DollarRiskBox extends Study {
     private static final String DEL_REMOVES = "delRemoves";
     private static final String ESC_DELETES = "escDeletes";
     private static final String KEEP_ON_TOP = "keepOnTop";
+    private static final String COMM_MODE = "commMode";
+    private static final String COMMISSION = "commission";
     private static final String PLACE_ONE = "one", PLACE_THREE = "three";
     // Hidden state (no descriptor)
     private static final String BOXES = "boxes";             // "entry,stop,target,start,end;..."
@@ -203,6 +205,14 @@ public class DollarRiskBox extends Study {
         pnl.addRow(new BooleanDescriptor(DEL_REMOVES, get("LBL_DEL_REMOVES"), true));
         pnl.addRow(new BooleanDescriptor(ESC_DELETES, get("LBL_ESC_DELETES"), true));
         pnl.addRow(new BooleanDescriptor(KEEP_ON_TOP, get("LBL_KEEP_ON_TOP"), true));
+
+        var costs = general.addGroup(get("GRP_COSTS"));
+        var commOptions = new ArrayList<NVP>();
+        commOptions.add(new NVP(get("OPT_COMM_AUTO"), Costs.Mode.AUTO.name()));
+        commOptions.add(new NVP(get("OPT_COMM_LUCID"), Costs.Mode.LUCID.name()));
+        commOptions.add(new NVP(get("OPT_COMM_MANUAL"), Costs.Mode.MANUAL.name()));
+        costs.addRow(new DiscreteDescriptor(COMM_MODE, get("LBL_COMM_MODE"), Costs.Mode.AUTO.name(), commOptions));
+        costs.addRow(new DoubleDescriptor(COMMISSION, get("LBL_COMMISSION"), 0.0, 0, 1000, 0.01));
 
         sd.addDependency(new EnabledDependency(FIXED_QTY_ENABLED, FIXED_QTY));
 
@@ -584,6 +594,7 @@ public class DollarRiskBox extends Study {
         private static volatile long lastInstall;
         private static boolean failureLogged;
         private static final javafx.event.EventHandler<javafx.scene.input.KeyEvent> FILTER = e -> {
+            if (e.isConsumed()) return;      // JavaFX still calls every filter: V2's may have taken this key already
             javafx.scene.input.KeyCode code = e.getCode();
             if (code != javafx.scene.input.KeyCode.ESCAPE && code != javafx.scene.input.KeyCode.DELETE
                     && code != javafx.scene.input.KeyCode.BACK_SPACE) return;
@@ -878,7 +889,11 @@ public class DollarRiskBox extends Study {
         boolean isLong = stop < entry;
         double stopDist = Math.abs(entry - stop);
         double targetDist = isLong ? target - entry : entry - target;   // negative if on the wrong side
-        double riskPerContract = stopDist / ps * pv;
+        // both commissions (in and out) count: in the risk per contract, the profit and the live P/L (1.6.0)
+        Costs.Mode mode = Costs.Mode.parse(s.getString(COMM_MODE, Costs.Mode.AUTO.name()));
+        double comm = Costs.of(mode, mode == Costs.Mode.AUTO ? Costs.platformServer() : null, rootSymbol(instr),
+                s.getDouble(COMMISSION, 0.0)).perSide();
+        double riskPerContract = stopDist / ps * pv + 2 * comm;
 
         double balance = s.getDouble(BALANCE, 50000);
         boolean percent = TYPE_PERCENT.equals(s.getString(RISK_TYPE, TYPE_FIXED));
@@ -889,12 +904,25 @@ public class DollarRiskBox extends Study {
                 : (riskPerContract > 0 ? (int) Math.floor(budget / riskPerContract + 1e-9) : 0);
 
         double loss = qty * riskPerContract;
-        double profit = qty * targetDist / ps * pv;
+        double profit = qty * (targetDist / ps * pv - 2 * comm);
         var series = ctx.getDataSeries();
         double last = series.size() > 0 ? series.getClose(series.size() - 1) : entry;
-        double currentPnl = qty * (isLong ? last - entry : entry - last) / ps * pv;
+        double currentPnl = qty * ((isLong ? last - entry : entry - last) / ps * pv - 2 * comm);
         double rr = stopDist > 0 ? targetDist / stopDist : 0;
         return new Calc(rr, qty, loss, profit, balance, currentPnl, !fixed, riskPerContract);
+    }
+
+    /** "MNQZ6" -> "MNQ"; the platform's underlying only when the symbol does not look like a contract. */
+    private static String rootSymbol(Instrument instr) {
+        String sym = instr.getSymbol();
+        String r = Costs.root(sym);
+        if (sym != null && r.equalsIgnoreCase(sym)) {
+            try {
+                String u = instr.getUnderlying();
+                if (u != null && !u.isBlank()) return Costs.root(u);
+            } catch (RuntimeException ignored) { }
+        }
+        return r;
     }
 
     private static String money(double v) {

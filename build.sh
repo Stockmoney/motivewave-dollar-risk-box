@@ -37,7 +37,7 @@ rm -rf build && mkdir -p build/classes/dollar_risk_box/nls
 # JavaFX ships beside the SDK jar (Contents/javafx); the study uses it to catch the Escape key.
 FX="$(dirname "$SDK")/../javafx"
 CP="$SDK"; for j in "$FX"/javafx.*.jar; do [[ -f "$j" ]] && CP="$CP:$j"; done
-"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$CP" -d build/classes dollar_risk_box/DollarRiskBox.java dollar_risk_box/ChartLayers.java dollar_risk_box/LayerGuard.java
+"$JAVAC" --release 21 -encoding UTF-8 -Xlint:all,-auxiliaryclass -cp "$CP" -d build/classes dollar_risk_box/DollarRiskBox.java dollar_risk_box/ChartLayers.java dollar_risk_box/LayerGuard.java dollar_risk_box/Costs.java
 cp dollar_risk_box/nls/strings.properties build/classes/dollar_risk_box/nls/
 "$JAR" cf build/DollarRiskBox.jar -C build/classes .
 echo "built build/DollarRiskBox.jar"
@@ -46,7 +46,7 @@ if [[ "${1:-}" == "install" ]]; then
   mkdir -p "$EXT"
   # A new file name each time: a running MotiveWave caches an open jar by path, so a replaced
   # jar with the same name would load its classes but not its text resources until a restart.
-  rm -f "$EXT"/DollarRiskBox*.jar "$EXT"/PLDollarTarget*.jar   # also drops the pre-rename jar
+  rm -f "$EXT"/DollarRiskBox-*.jar "$EXT"/PLDollarTarget*.jar   # only V1's own jars (V2 is DollarRiskBoxV2-*.jar)
   cp build/DollarRiskBox.jar "$EXT/DollarRiskBox-$(date +%s).jar"
   touch "$EXT/.last_updated"   # MotiveWave rescans the folder when this file changes
   echo "installed into: $EXT"
