@@ -60,6 +60,7 @@ public class DollarRiskBox extends Study {
     private static final String ESC_CANCELS = "escCancels";
     private static final String DEL_REMOVES = "delRemoves";
     private static final String ESC_DELETES = "escDeletes";
+    private static final String KEEP_ON_TOP = "keepOnTop";
     private static final String PLACE_ONE = "one", PLACE_THREE = "three";
     // Hidden state (no descriptor)
     private static final String BOXES = "boxes";             // "entry,stop,target,start,end;..."
@@ -139,6 +140,20 @@ public class DollarRiskBox extends Study {
     private long placeStart;
     private String placeHint;               // why the last click was not accepted
 
+    private LayerGuard layerGuard;
+
+    /**
+     * Starts (once) the guard that keeps this overlay above the user's drawings. The platform hands a click to the LAST layer of the
+     * pane that claims the point, and a line the user adds is put last: it lay over the buttons and handles (and the earlier fix
+     * only ordered this study's OWN figures, which does not touch the platform's layers).
+     */
+    private void keepOnTop() {
+        if (layerGuard != null) return;
+        layerGuard = new LayerGuard(this, this::getDataContext, () -> getSettings().getBoolean(KEEP_ON_TOP, true),
+                () -> interacting || armed != null || placeStep != 0 || activeRP != null || panelDragPos != null, t -> java.util.logging.Logger.getLogger("DollarRiskBox").info("LAYERS " + t));
+        layerGuard.start();
+    }
+
     private ButtonPanel panel;
     private ClickCatcher catcher;
     private PanelGrip grip;
@@ -187,6 +202,7 @@ public class DollarRiskBox extends Study {
         pnl.addRow(new BooleanDescriptor(ESC_CANCELS, get("LBL_ESC_CANCELS"), true));
         pnl.addRow(new BooleanDescriptor(DEL_REMOVES, get("LBL_DEL_REMOVES"), true));
         pnl.addRow(new BooleanDescriptor(ESC_DELETES, get("LBL_ESC_DELETES"), true));
+        pnl.addRow(new BooleanDescriptor(KEEP_ON_TOP, get("LBL_KEEP_ON_TOP"), true));
 
         sd.addDependency(new EnabledDependency(FIXED_QTY_ENABLED, FIXED_QTY));
 
@@ -248,6 +264,7 @@ public class DollarRiskBox extends Study {
         copy.armed = null;
         copy.placeStep = 0;
         copy.placeHint = null;
+        copy.layerGuard = null;
         copy.panel = null; copy.catcher = null; copy.grip = null;
         copy.panelDragPos = null; copy.lastCtx = null;
         copy.clearFigures();
@@ -256,6 +273,10 @@ public class DollarRiskBox extends Study {
 
     @Override
     public void destroy() {
+        if (layerGuard != null) {
+            layerGuard.stop();
+            layerGuard = null;
+        }
         PLACING.remove(this);
         INSTANCES.remove(this);
         super.destroy();
@@ -275,6 +296,7 @@ public class DollarRiskBox extends Study {
             activeRP = null;
         }
         if (!interacting) loadFromSettings();
+        keepOnTop();
         syncFigures();
         notifyRedraw();
     }
@@ -343,6 +365,16 @@ public class DollarRiskBox extends Study {
         }
         if (!figs.contains(panel)) addFigure(panel);
         if (!figs.contains(grip)) addFigure(grip);
+        // The panel and its grip must stay the LAST figures: anything added after them (a box placed later) is drawn over them
+        // and wins the mouse, which is how new lines ended up lying on top of the buttons again. Not while the grip is dragged.
+        List<?> now = getFigures();
+        int n = now.size();
+        if (n >= 2 && (now.get(n - 2) != panel || now.get(n - 1) != grip) && panelDragPos == null && activeRP != grip) {
+            removeFigure(panel);
+            removeFigure(grip);
+            addFigure(panel);
+            addFigure(grip);
+        }
     }
 
     private void removeBox(Box b) {
@@ -902,6 +934,18 @@ public class DollarRiskBox extends Study {
         return String.format(Locale.US, "%,.2f", v);
     }
 
+    /** True when the point lies on this study's own tool panel (grip or a button) plus a small margin. Boxes and their handles must
+     *  never claim those points, otherwise a box line or fill passing behind the panel makes it impossible to press or drag. */
+    private boolean onPanel(double x, double y) {
+        ButtonPanel p = panel;
+        if (p == null) return false;
+        return near(p.gripRect, x, y) || near(p.longRect, x, y) || near(p.shortRect, x, y);
+    }
+
+    private static boolean near(Rectangle r, double x, double y) {
+        return r != null && x >= r.x - 3 && x <= r.x + r.width + 3 && y >= r.y - 3 && y <= r.y + r.height + 3;
+    }
+
     // ==================== Figures ====================
     /** Platform drag handle of one box. */
     private class Handle extends ResizePoint {
@@ -938,6 +982,7 @@ public class DollarRiskBox extends Study {
          *  button); while it is being dragged it must claim every point or the platform drops it. */
         @Override
         public boolean contains(double x, double y, DrawContext ctx) {
+            if (activeRP != this && onPanel(x, y)) return false;
             if (this != owner.bodyRP) return super.contains(x, y, ctx);
             if (activeRP == this) return true;
             BoxFigure f = owner.fig;
@@ -1271,7 +1316,7 @@ public class DollarRiskBox extends Study {
         }
 
         boolean bodyContains(double x, double y) {
-            if (!ok) return false;
+            if (!ok || onPanel(x, y)) return false;
             if (x >= x1 && x <= x2 && y >= Math.min(yStop, yTarget) && y <= Math.max(yStop, yTarget)) return true;
             for (Label l : labels) if (l.rect().contains(x, y)) return true;
             return false;

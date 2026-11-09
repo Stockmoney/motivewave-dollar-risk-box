@@ -81,6 +81,7 @@ If you prefer one click, set **New Box** to *1 click*: the click puts a ready-ma
 - **Escape cancels a box being placed** — on by default.
 - **Escape removes the selected box (when no box is being placed)** — on by default.
 - **Delete key removes the selected box (not the whole indicator)** — on by default. Switch it off and Delete goes back to the platform.
+- **Keep above my drawings** — on by default. MotiveWave gives a mouse click to the object drawn last, and every line you draw goes on top: over the panel buttons and the box handles, so they could not be pressed. With this setting the indicator watches the chart and, when a drawing lies above it, does what the chart's own *Move Front* command does for it. Inside a box the click now goes to the box, so a line under a box cannot be picked there.
 - **Risk Type** — *Fixed Amount* uses **Risk ($)**; *Percent of Balance* uses **Risk (%)** × **Account Balance**.
 - **Account Balance** is typed in by hand. A MotiveWave indicator cannot read your broker account, so update it when your balance changes.
 - **Fixed Quantity** — switch off the risk-based sizing and use a constant number of contracts.
@@ -108,7 +109,7 @@ bash build.sh install    # also copies it into ~/MotiveWave Extensions
 ```
 
 Different locations: `MW_SDK=/path/to/mwave_sdk.jar MW_EXT=/path/to/extensions bash build.sh install`.
-On Windows, compile by hand: `javac --release 21 -cp "mwave_sdk.jar;<folder with the JavaFX jars>\*" -d out dollar_risk_box/DollarRiskBox.java`, copy `dollar_risk_box/nls/strings.properties` to `out/dollar_risk_box/nls/`, then `jar cf DollarRiskBox.jar -C out .`.
+On Windows, compile by hand: `javac --release 21 -cp "mwave_sdk.jar;<folder with the JavaFX jars>\*" -d out dollar_risk_box/DollarRiskBox.java dollar_risk_box/ChartLayers.java dollar_risk_box/LayerGuard.java`, copy `dollar_risk_box/nls/strings.properties` to `out/dollar_risk_box/nls/`, then `jar cf DollarRiskBox.jar -C out .`.
 
 You can check the "no orders" claim yourself: `javap -v` on the compiled classes shows no reference to `order_mgmt` or `OrderContext`.
 
@@ -123,6 +124,12 @@ java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applicatio
 Expected result: `Deletion regression: 16 checks passed`. This checks clone ownership and state isolation; keyboard and mouse deletion are verified in the running platform separately.
 
 ## Changelog
+
+**1.5.0**
+- New setting **Keep above my drawings** (on by default): lines you draw no longer cover the panel buttons and the box handles — the indicator moves itself above them, as the chart's *Move Front* does, also for lines drawn later.
+- The panel and its grip always stay above the indicator's own boxes; a box line or fill passing behind the panel no longer takes its clicks.
+- Works with MotiveWave 7.1.3 (its internal class names changed; 7.1.1 and 7.1.2 keep working).
+- After an update of the jar, the copy that was replaced stops its background check by itself (MotiveWave does not tell it that it was replaced).
 
 **1.4.0**
 - New setting **Minimal labels (no prices)** (*Format* tab): labels without prices, also while a box is being placed. Off by default, so nothing changes until you switch it on.
@@ -154,6 +161,7 @@ Expected result: `Deletion regression: 16 checks passed`. This checks clone owne
 - The balance for % risk is entered manually (see above).
 - Handles are drawn only while the indicator is selected (click a box) — a MotiveWave rule for indicators.
 - All boxes belong to one indicator instance; deleting the indicator deletes them all (use *Lock Figure*).
+- *Keep above my drawings* reads MotiveWave's chart layers, which the public SDK does not offer (checked on 7.1.1, 7.1.2 and 7.1.3). On a platform build where they look different it switches itself off and the indicator works as before; a MotiveWave update may need a new release of the indicator.
 
 ## Disclaimer
 

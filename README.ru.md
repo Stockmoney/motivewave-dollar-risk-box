@@ -81,6 +81,7 @@
 - **Escape cancels a box being placed** — включено по умолчанию.
 - **Escape removes the selected box (when no box is being placed)** — включено по умолчанию.
 - **Delete key removes the selected box (not the whole indicator)** — включено по умолчанию. Если выключить, Delete снова уходит платформе.
+- **Keep above my drawings** — включено по умолчанию. MotiveWave отдаёт клик мыши объекту, нарисованному последним, а каждая новая линия ложится сверху — на кнопки панели и ручки бокса, и их нельзя было нажать. С этой настройкой индикатор следит за графиком и, когда рисунок оказывается выше него, делает для себя то же, что команда графика *Move Front*. Внутри бокса клик теперь достаётся боксу, поэтому линию под боксом там не выбрать.
 - **Risk Type** — *Fixed Amount* использует **Risk ($)**; *Percent of Balance* использует **Risk (%)** × **Account Balance**.
 - **Account Balance** вводится вручную. Индикатор MotiveWave не может прочитать счёт у брокера, поэтому обновляйте баланс сами.
 - **Fixed Quantity** — отключает расчёт от риска и ставит постоянное число контрактов.
@@ -108,7 +109,7 @@ bash build.sh install    # и копирует в ~/MotiveWave Extensions
 ```
 
 Другие пути: `MW_SDK=/путь/к/mwave_sdk.jar MW_EXT=/путь/к/extensions bash build.sh install`.
-На Windows соберите вручную: `javac --release 21 -cp "mwave_sdk.jar;<папка с JavaFX-jar>\*" -d out dollar_risk_box/DollarRiskBox.java`, скопируйте `dollar_risk_box/nls/strings.properties` в `out/dollar_risk_box/nls/`, затем `jar cf DollarRiskBox.jar -C out .`.
+На Windows соберите вручную: `javac --release 21 -cp "mwave_sdk.jar;<папка с JavaFX-jar>\*" -d out dollar_risk_box/DollarRiskBox.java dollar_risk_box/ChartLayers.java dollar_risk_box/LayerGuard.java`, скопируйте `dollar_risk_box/nls/strings.properties` в `out/dollar_risk_box/nls/`, затем `jar cf DollarRiskBox.jar -C out .`.
 
 Утверждение «ордеров нет» можно проверить самим: `javap -v` на скомпилированных классах не показывает ссылок на `order_mgmt` и `OrderContext`.
 
@@ -123,6 +124,12 @@ java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applicatio
 Ожидаемый результат: `Deletion regression: 16 checks passed`. Проверяются принадлежность фигур и независимость состояния копий; удаление клавишами и мышью проверяется отдельно в работающей платформе.
 
 ## История изменений
+
+**1.5.0**
+- Новая настройка **Keep above my drawings** (включена по умолчанию): нарисованные линии больше не закрывают кнопки панели и ручки бокса — индикатор сам поднимается над ними, как это делает команда графика *Move Front*, и для линий, нарисованных позже.
+- Панель и её захват всегда выше собственных боксов индикатора; линия или заливка бокса за панелью больше не перехватывает её клики.
+- Работает с MotiveWave 7.1.3 (там изменились внутренние имена классов; 7.1.1 и 7.1.2 работают как раньше).
+- После обновления jar заменённая копия сама останавливает свою фоновую проверку (MotiveWave не сообщает ей о замене).
 
 **1.4.0**
 - Новая настройка **Minimal labels (no prices)** (вкладка *Format*): подписи без цен, в том числе при постановке бокса. По умолчанию выключена, поэтому ничего не меняется, пока вы её не включите.
@@ -154,6 +161,7 @@ java --enable-native-access=ALL-UNNAMED -cp 'build/DollarRiskBox.jar:/Applicatio
 - Баланс для риска в % вводится вручную (см. выше).
 - Ручки рисуются только пока индикатор выделен (кликните по боксу) — так в MotiveWave устроены индикаторы.
 - Все боксы принадлежат одному индикатору; удаление индикатора удаляет их все (используйте *Lock Figure*).
+- *Keep above my drawings* читает слои графика MotiveWave, которых нет в публичном SDK (проверено на 7.1.1, 7.1.2 и 7.1.3). На сборке платформы, где они устроены иначе, настройка сама выключается, и индикатор работает как раньше; после обновления MotiveWave может понадобиться новый релиз индикатора.
 
 ## Отказ от ответственности
 
