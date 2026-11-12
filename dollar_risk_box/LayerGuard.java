@@ -1,5 +1,8 @@
 package dollar_risk_box;
 
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -52,6 +55,15 @@ public final class LayerGuard {
     private volatile long movedAt;
     private int fails, unreadable;
     private long moves, lastLogged;
+    /**
+     * Kinds of drawing the platform keeps above every study whatever "Move Front" does (seen 10 and 12 Nov 2026: the
+     * Price Guide, class "cx(drawing)"). After {@link #MAX_FAILS} moves that leave the same kinds above, they are learnt
+     * here and ignored from then on - instead of switching the whole guard off, which left the overlay unprotected from
+     * the ordinary lines too.
+     */
+    private final Set<String> pinned = ConcurrentHashMap.newKeySet();
+    /** The kinds that stayed above in EVERY failed move since the last success (JavaFX thread only); only these are pinned. */
+    private Set<String> stuckEveryTime;
     private Thread thread;
 
     /**
@@ -70,6 +82,7 @@ public final class LayerGuard {
     public synchronized void start() {
         if (running) return;
         claimCurrent();
+        pinned.clear();
         running = true;
         gaveUp = false;
         fails = 0;
@@ -121,13 +134,35 @@ public final class LayerGuard {
             return;
         }
         unreadable = 0;
-        if (o.ours() < 0 || o.drawingsAfterUs() == 0 || busy.getAsBoolean()) return;
+        if (o.ours() < 0 || movableAbove(o, pinned) == 0 || busy.getAsBoolean()) return;
         long now = System.currentTimeMillis();
         if (now - movedAt < PERIOD_MS) return;
         movedAt = now;
         final Object target = l;
-        final int above = o.drawingsAfterUs();
+        final int above = movableAbove(o, pinned);
         javafx.application.Platform.runLater(() -> moveNow(target, above));
+    }
+
+    /** The drawings above our layer that a move can still do something about (kinds the platform pins on top excluded). */
+    public static int movableAbove(ChartLayers.Order o, Set<String> pinned) {
+        if (o == null || o.ours() < 0) return 0;
+        int n = 0;
+        for (int i = o.ours() + 1; i < o.layers().size(); i++) {
+            ChartLayers.Layer l = o.layers().get(i);
+            if (l.drawing() && !pinned.contains(l.name())) n++;
+        }
+        return n;
+    }
+
+    /** The kinds (class names) of the drawings above our layer that are not pinned yet. */
+    public static Set<String> kindsAbove(ChartLayers.Order o, Set<String> pinned) {
+        Set<String> out = new TreeSet<>();
+        if (o == null || o.ours() < 0) return out;
+        for (int i = o.ours() + 1; i < o.layers().size(); i++) {
+            ChartLayers.Layer l = o.layers().get(i);
+            if (l.drawing() && !pinned.contains(l.name())) out.add(l.name());
+        }
+        return out;
     }
 
     /** On the JavaFX thread. */
@@ -135,19 +170,34 @@ public final class LayerGuard {
         try {
             if (!running || busy.getAsBoolean() || ChartLayers.destroyed(target)) return;
             ChartLayers.Order before = ChartLayers.read(target);
-            if (before == null || before.ours() < 0 || before.drawingsAfterUs() == 0) return;     // it was put right meanwhile
+            if (before == null || before.ours() < 0 || movableAbove(before, pinned) == 0) return;     // it was put right meanwhile
             boolean called = ChartLayers.moveToFront(target);
             ChartLayers.Order after = ChartLayers.read(target);
-            boolean ok = called && after != null && after.drawingsAfterUs() == 0;
+            boolean ok = called && after != null && movableAbove(after, pinned) == 0;
             if (ok) {
                 fails = 0;
+                stuckEveryTime = null;
                 moves++;
                 long now = System.currentTimeMillis();
                 if (moves <= 5 || now - lastLogged > 60_000) {
                     lastLogged = now;
-                    log.accept("moved to front: " + before.drawingsAfterUs() + " drawing(s) lay over this overlay (move " + moves + ")");
+                    log.accept("moved to front: " + movableAbove(before, pinned) + " drawing(s) lay over this overlay (move " + moves + ")");
                 }
-            } else if (++fails >= MAX_FAILS) {
+            } else {
+                // a kind is learnt only if it stayed above in each of the failed moves (not one that just appeared)
+                Set<String> now = called && after != null ? kindsAbove(after, pinned) : Set.<String>of();
+                if (stuckEveryTime == null) stuckEveryTime = new TreeSet<>(now); else stuckEveryTime.retainAll(now);
+                if (++fails < MAX_FAILS) return;
+                Set<String> stuck = new TreeSet<>(stuckEveryTime);
+                stuckEveryTime = null;
+                if (!stuck.isEmpty()) {
+                    // the platform keeps these on top: ignore them, keep guarding against every other drawing
+                    pinned.addAll(stuck);
+                    fails = 0;
+                    log.accept("layer guard: " + stuck + " stay above the overlay whatever is done (the platform keeps them on top) - "
+                            + "ignored from now on, the guard keeps working for the other drawings. " + after.describe());
+                    return;
+                }
                 gaveUp = true;
                 log.accept("layer guard: " + MAX_FAILS + " moves did not put the overlay above the drawings (" + (called ? "order unchanged" : "call failed")
                         + ") - switched off. " + (after == null ? "" : after.describe()));

@@ -42,7 +42,7 @@ MotiveWave's built-in *PL 1 Target* drawing tool labels profit and loss as *poin
 
 Add it to a chart once — the **Long / Short** panel appears. Save the chart as a *Template* if you want the panel on every chart.
 
-> Tested on macOS with MotiveWave 7.1.1 and CME futures (MNQ). The jar is plain Java and should work on Windows too, but that has not been tested.
+> Tested on macOS with MotiveWave 7.1.1–7.1.4 and CME futures (MNQ, MGC). The jar is plain Java and should work on Windows too, but that has not been tested.
 
 ## How to use
 
@@ -128,6 +128,10 @@ Expected result: `Deletion regression: 16 checks passed`. This checks clone owne
 
 ## Changelog
 
+**1.6.2**
+- Works with MotiveWave 7.1.4 (checked against its code).
+- *Keep above my drawings* no longer switches itself off when a Price Guide lies above the box: MotiveWave keeps price guides above everything, so the guard now leaves them alone and keeps protecting against the other lines.
+
 **1.6.1**
 - Buttons react to the first click: after a drag (a box, an edge or the panel) the platform sometimes sends no mouse-up click, and the next real press was taken for it and ignored. Now only a click within 0.4 s of the end of a drag is ignored.
 
@@ -172,7 +176,7 @@ Expected result: `Deletion regression: 16 checks passed`. This checks clone owne
 - The balance for % risk is entered manually (see above).
 - Handles are drawn only while the indicator is selected (click a box) — a MotiveWave rule for indicators.
 - All boxes belong to one indicator instance; deleting the indicator deletes them all (use *Lock Figure*).
-- *Keep above my drawings* reads MotiveWave's chart layers, which the public SDK does not offer (checked on 7.1.1, 7.1.2 and 7.1.3). On a platform build where they look different it switches itself off and the indicator works as before; a MotiveWave update may need a new release of the indicator.
+- *Keep above my drawings* reads MotiveWave's chart layers, which the public SDK does not offer (checked on 7.1.1, 7.1.2, 7.1.3 and 7.1.4). On a platform build where they look different it switches itself off and the indicator works as before; a MotiveWave update may need a new release of the indicator.
 
 ## Disclaimer
 
